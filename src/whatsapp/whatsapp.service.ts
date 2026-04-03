@@ -11,28 +11,36 @@ export class WhatsappService implements OnModuleInit {
   private isConnected = false;
 
   constructor() {
+    const puppeteerArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+    ];
+
     this.client = new Client({
       authStrategy: new LocalAuth(),
       webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
       },
-      puppeteer: { 
+      puppeteer: {
         headless: true,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu'
-        ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined 
+        args: puppeteerArgs,
+        // בשרת Render הכרום מותקן בנתיב מסוים אחרי הפקודה npx puppeteer browsers install chrome
+        executablePath: process.platform === 'linux' 
+          ? '/opt/render/.cache/puppeteer/chrome/linux-125.0.6422.60/chrome-linux64/chrome' 
+          : undefined, 
       }
     });
   }
 
-  onModuleInit() {
-    this.client.on('qr', (qr) => {
-      this.logger.log('New QR Code generated. Scan it from the logs:');
+  async onModuleInit(): Promise<void> {
+    this.client.on('qr', (qr: string) => {
+      this.logger.log('--- SCAN THIS QR CODE IN YOUR LOGS ---');
       qrcode.generate(qr, { small: true });
     });
 
@@ -40,11 +48,16 @@ export class WhatsappService implements OnModuleInit {
       this.logger.log('Authenticated successfully!');
     });
 
-    this.client.on('ready', () => {
-      this.isConnected = true;
-      this.logger.log('✅ WhatsApp is Ready and Running on Server!');
+    this.client.on('auth_failure', (msg: string) => {
+      this.logger.error(`Authentication failure: ${msg}`);
     });
 
+    this.client.on('ready', () => {
+      this.isConnected = true;
+      this.logger.log('✅ WhatsApp Client is Ready!');
+    });
+
+    // צייד ID - עוזר למצוא ID של קבוצות חדשות מהלוגים
     this.client.on('message_create', async (msg) => {
       if (msg.fromMe) {
         const chat = await msg.getChat();
@@ -54,14 +67,15 @@ export class WhatsappService implements OnModuleInit {
       }
     });
 
+    this.logger.log('Initializing WhatsApp Client...');
     this.client.initialize().catch(err => {
-      this.logger.error('Initialization error:', err);
+      this.logger.error('Client Initialization Error:', err);
     });
   }
 
-  async sendOmerMessage(groupId: string, dayNumber: string, caption: string) {
+  async sendOmerMessage(groupId: string, dayNumber: string, caption: string): Promise<void> {
     if (!this.isConnected) {
-      this.logger.error('Cannot send: Client not ready');
+      this.logger.error('Failed to send: Client not connected');
       return;
     }
 
@@ -71,13 +85,13 @@ export class WhatsappService implements OnModuleInit {
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
-        this.logger.log(`Success: Sent image for day ${dayNumber} to ${groupId}`);
+        this.logger.log(`Successfully sent Day ${dayNumber} image to ${groupId}`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        this.logger.log(`Success: Sent text only for day ${dayNumber} to ${groupId}`);
+        this.logger.log(`Image ${dayNumber}.jpg not found. Sent text only to ${groupId}`);
       }
     } catch (error) {
-      this.logger.error(`Failed to send to ${groupId}: ${error.message}`);
+      this.logger.error(`Error sending message to ${groupId}: ${error.message}`);
     }
   }
 }
