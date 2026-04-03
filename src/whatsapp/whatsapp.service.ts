@@ -23,17 +23,11 @@ export class WhatsappService implements OnModuleInit {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
+          '--disable-dev-shm-usage', // קריטי למניעת קריסת זיכרון
           '--disable-gpu',
         ],
-        executablePath: join(
-          process.cwd(),
-          'chrome',
-          'chrome',
-          'linux-146.0.7680.153',
-          'chrome-linux64',
-          'chrome',
-        ),
+        // ב-Railway פשוט משאירים ריק או משתמשים במשתנה סביבה
+        executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
       },
     });
   }
