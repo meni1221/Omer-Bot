@@ -26,14 +26,14 @@ export class OmerSchedulerService implements OnModuleInit {
     await this.updateDailyTarget('Initialization');
   }
 
-  // דגימה וחישוב ב-12:00 בצהריים + שליחת הודעה למני
-  @Cron('0 0 12 * * *')
+ // דגימה וחישוב ב-12:00 בצהריים שעון ישראל
+  @Cron('0 0 12 * * *', { timeZone: 'Asia/Jerusalem' })
   async handleNoonCheck(): Promise<void> {
     await this.updateDailyTarget('דגימת 12:00');
   }
 
-  // דגימה וחישוב חוזר ב-16:00 בצהריים + שליחת הודעה למני
-  @Cron('0 0 16 * * *')
+  // דגימה וחישוב חוזר ב-16:00 בצהריים שעון ישראל
+  @Cron('0 7 16 * * *', { timeZone: 'Asia/Jerusalem' })
   async handleAfternoonCheck(): Promise<void> {
     await this.updateDailyTarget('בדיקה חוזרת 16:00');
   }
