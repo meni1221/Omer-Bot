@@ -22,97 +22,98 @@ export class OmerSchedulerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.logger.log('Omer Scheduler (TS) initialized. Calculating target time...');
-    await this.updateDailyTarget('Initialization');
+    this.logger.log('🚀 Startup: Running initial target time calculation...');
+    await this.updateDailyTarget('הפעלת שרת');
   }
 
- // דגימה וחישוב ב-12:00 בצהריים שעון ישראל
-  @Cron('0 0 12 * * *', { timeZone: 'Asia/Jerusalem' })
+  @Cron('0 0 12 * * *')
   async handleNoonCheck(): Promise<void> {
     await this.updateDailyTarget('דגימת 12:00');
   }
 
-  // דגימה וחישוב חוזר ב-16:00 בצהריים שעון ישראל
-  @Cron('0 7 16 * * *', { timeZone: 'Asia/Jerusalem' })
+  @Cron('0 0 16 * * *')
   async handleAfternoonCheck(): Promise<void> {
     await this.updateDailyTarget('בדיקה חוזרת 16:00');
   }
 
-  // פונקציית הליבה לעדכון זמן היעד
   async updateDailyTarget(source: string): Promise<void> {
-    const zmanIso = await this.omerService.getZmanim();
-    if (zmanIso) {
-      // חילוץ שעה ודקה (HH:mm)
-      this.targetTime = new Date(zmanIso).getUTCHours().toString().padStart(2, '0') + ':' + 
-                        new Date(zmanIso).getUTCMinutes().toString().padStart(2, '0');
-      
-      const logMsg = `Target time set to: ${this.targetTime} UTC (Tzeit HaKochavim)`;
-      this.logger.log(`[${source}] ${logMsg}`);
+    try {
+      const zmanIso = await this.omerService.getZmanim();
+      if (zmanIso) {
+        let targetDate = new Date(zmanIso);
+        const dayOfWeek = new Date().getDay(); // 0 = Sunday, 5 = Friday
 
-      // שליחת עדכון למני לוואטסאפ
-      await this.whatsappService.sendMessage(
-        this.ownerNumber, 
-        `🔍 ${source}: זמן השליחה להיום נקבע ל-${this.targetTime} (UTC).`
-      );
+        // בדיקה האם היום יום שישי
+        if (dayOfWeek === 5) {
+          this.logger.log(
+            '📅 Friday detected: Adjusting to 90 minutes before Tzeit/Sunset...',
+          );
+          // הפחתה של 90 דקות (90 * 60 * 1000 מילישניות)
+          targetDate = new Date(targetDate.getTime() - 90 * 60 * 1000);
+        }
+
+        const hours = targetDate.getHours().toString().padStart(2, '0');
+        const minutes = targetDate.getMinutes().toString().padStart(2, '0');
+
+        this.targetTime = `${hours}:${minutes}`;
+        this.logger.log(`[${source}] Target time set to: ${this.targetTime}`);
+
+        await this.whatsappService.sendMessage(
+          this.ownerNumber,
+          `🔍 ${source}: זמן השליחה להיום (${dayOfWeek === 5 ? 'ערב שבת' : 'חול'}) נקבע ל-${this.targetTime}.`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(`Failed to update target time: ${e.message}`);
     }
   }
 
-  // בדיקה כל דקה האם הגיע הזמן או האם אנחנו 10 דקות לפני
   @Cron(CronExpression.EVERY_MINUTE)
   async checkAndSend(): Promise<void> {
     if (!this.targetTime) return;
 
     const now = new Date();
-    const currentTime = now.getUTCHours().toString().padStart(2, '0') + ':' + 
-                        now.getUTCMinutes().toString().padStart(2, '0');
+    const currentTime =
+      now.getHours().toString().padStart(2, '0') +
+      ':' +
+      now.getMinutes().toString().padStart(2, '0');
 
-    // חישוב זמן של 10 דקות לפני
+    // חישוב 10 דקות לפני ההתראה
     const targetDate = new Date();
-    const [targetH, targetM] = this.targetTime.split(':').map(Number);
-    targetDate.setUTCHours(targetH, targetM, 0, 0);
-    
-    const tenMinutesBeforeDate = new Date(targetDate.getTime() - 10 * 60000);
-    const tenMinutesBeforeTime = tenMinutesBeforeDate.getUTCHours().toString().padStart(2, '0') + ':' + 
-                                 tenMinutesBeforeDate.getUTCMinutes().toString().padStart(2, '0');
+    const [h, m] = this.targetTime.split(':').map(Number);
+    targetDate.setHours(h, m, 0, 0);
 
-    // 1. התראת 10 דקות לפני
-    if (currentTime === tenMinutesBeforeTime) {
+    const tenMinBefore = new Date(targetDate.getTime() - 10 * 60000);
+    const tenMinBeforeStr =
+      tenMinBefore.getHours().toString().padStart(2, '0') +
+      ':' +
+      tenMinBefore.getMinutes().toString().padStart(2, '0');
+
+    if (currentTime === tenMinBeforeStr) {
       await this.whatsappService.sendMessage(
         this.ownerNumber,
-        `🔔 מני, בעוד 10 דקות בדיוק הודעת העומר תישלח לכל הקבוצות!`
+        `🔔 מני, בעוד 10 דקות הודעת העומר תישלח לכל הקבוצות!`,
       );
     }
 
-    // 2. זמן השליחה האמיתי
     if (currentTime === this.targetTime) {
-      this.logger.log('✨ Tzeit HaKochavim reached! Executing sequence...');
+      this.logger.log('✨ Target time reached! Sending updates...');
       await this.sendDailyUpdate();
-      
-      // שליחת אישור סופי למני
-      await this.whatsappService.sendMessage(this.ownerNumber, `✅ הודעות העומר נשלחו בהצלחה לכל הקבוצות.`);
-      
-      this.targetTime = null; // מניעת שליחה חוזרת
+      this.targetTime = null;
     }
   }
 
   private async sendDailyUpdate(): Promise<void> {
     const data = await this.omerService.getOmerData();
-
     if (data && data.day) {
-      const caption =
-        `*ספירת העומר - הלילה ${data.day} ימים:*\n` +
-        `${data.hebrew}\n\n` +
-        `📢 להצטרפות לתזכורות יומיות:\n` +
-        `https://chat.whatsapp.com/I8bONiOPYoi8a7QnYT9p5a?mode=gi_t\n\n` +
-        `תזכו למצוות! 🕯️`;
-
+      const caption = `*ספירת העומר - הלילה ${data.day} ימים:*\n${data.hebrew}\n\nתזכו למצוות! 🕯️`;
       for (const groupId of this.groups) {
-        try {
-          await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
-        } catch (err) {
-          this.logger.error(`Failed to send to group ${groupId}: ${err.message}`);
-        }
+        await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
       }
+      await this.whatsappService.sendMessage(
+        this.ownerNumber,
+        `✅ הודעות העומר נשלחו (יום ${data.day}).`,
+      );
     }
   }
 }
