@@ -31,9 +31,9 @@ export class OmerSchedulerService implements OnModuleInit {
     await this.updateDailyTarget('דגימת 12:00');
   }
 
-  @Cron('0 0 18 * * *')
+  @Cron('0 0 16 * * *')
   async handleAfternoonCheck(): Promise<void> {
-    await this.updateDailyTarget('בדיקה חוזרת 18:00');
+    await this.updateDailyTarget('בדיקה חוזרת 16:00');
   }
 
   async updateDailyTarget(source: string): Promise<void> {
@@ -41,15 +41,15 @@ export class OmerSchedulerService implements OnModuleInit {
       const zmanIso = await this.omerService.getZmanim();
       if (zmanIso) {
         let targetDate = new Date(zmanIso);
-        const dayOfWeek = new Date().getDay(); // 0 = Sunday, 5 = Friday
+        const dayOfWeek = new Date().getDay(); // 5 = Friday
 
-        // בדיקה האם היום יום שישי
+        // עדכון ליום שישי: שעה אחת לפני (60 דקות)
         if (dayOfWeek === 5) {
           this.logger.log(
-            '📅 Friday detected: Adjusting to 90 minutes before Tzeit/Sunset...',
+            '📅 Friday detected: Adjusting to 60 minutes before...',
           );
-          // הפחתה של 90 דקות (90 * 60 * 1000 מילישניות)
-          targetDate = new Date(targetDate.getTime() - 90 * 60 * 1000);
+          // הפחתה של 60 דקות (60 * 60 * 1000 מילישניות)
+          targetDate = new Date(targetDate.getTime() - 60 * 60 * 1000);
         }
 
         const hours = targetDate.getHours().toString().padStart(2, '0');
@@ -58,9 +58,10 @@ export class OmerSchedulerService implements OnModuleInit {
         this.targetTime = `${hours}:${minutes}`;
         this.logger.log(`[${source}] Target time set to: ${this.targetTime}`);
 
+        const dayType = dayOfWeek === 5 ? 'ערב שבת (שעה מראש)' : 'יום חול';
         await this.whatsappService.sendMessage(
           this.ownerNumber,
-          `🔍 ${source}: זמן השליחה להיום (${dayOfWeek === 5 ? 'ערב שבת' : 'חול'}) נקבע ל-${this.targetTime}.`,
+          `🔍 ${source}: זמן השליחה ל${dayType} נקבע ל-${this.targetTime}.`,
         );
       }
     } catch (e) {
@@ -78,7 +79,7 @@ export class OmerSchedulerService implements OnModuleInit {
       ':' +
       now.getMinutes().toString().padStart(2, '0');
 
-    // חישוב 10 דקות לפני ההתראה
+    // התראת 10 דקות לפני
     const targetDate = new Date();
     const [h, m] = this.targetTime.split(':').map(Number);
     targetDate.setHours(h, m, 0, 0);
