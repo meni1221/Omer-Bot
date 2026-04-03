@@ -11,20 +11,15 @@ export class WhatsappService implements OnModuleInit {
   private isConnected = false;
 
   constructor() {
-    const chromePath = existsSync('/usr/bin/google-chrome-stable')
-      ? '/usr/bin/google-chrome-stable'
-      : '/usr/bin/google-chrome';
-
     this.client = new Client({
       authStrategy: new LocalAuth(),
       webVersionCache: {
         type: 'remote',
-        remotePath:
-          'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
       },
       puppeteer: {
         headless: true,
-        executablePath: chromePath,
+        // מחקנו את ה-executablePath! הוא ימצא את הכרום שהורד ב-Build
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
