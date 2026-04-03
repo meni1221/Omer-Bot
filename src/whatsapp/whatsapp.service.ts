@@ -9,6 +9,8 @@ export class WhatsappService implements OnModuleInit {
   private client: Client;
   private readonly logger = new Logger(WhatsappService.name);
   private isConnected = false;
+  // המספר שלך בפורמט וואטסאפ (972 במקום ה-0 הראשון)
+  private readonly ownerNumber = '972533011599@c.us';
 
   constructor() {
     this.client = new Client({
@@ -19,41 +21,42 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        // מחקנו את ה-executablePath! הוא ימצא את הכרום שהורד ב-Build
+        // ה-Dockerfile יוריד את הכרום למיקום הדיפולטיבי של Puppeteer
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         ],
       },
     });
   }
 
   async onModuleInit(): Promise<void> {
+    // הדפסת QR במידה וצריך התחברות מחדש
     this.client.on('qr', (qr: string) => {
-      this.logger.log('--- SCAN QR CODE ---');
-
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+      this.logger.log('--- QR CODE READY ---');
+      const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
       console.log('\x1b[36m%s\x1b[0m', '👉 Open this link to scan:');
-      console.log(qrImageUrl);
-      console.log('\n');
-
-      // 2. גיבוי: ה-QR המקורי בטרמינל
+      console.log(qrLink);
       qrcode.generate(qr, { small: true });
     });
 
-    this.client.on('ready', () => {
+    // ברגע שהבוט מתחבר בהצלחה
+    this.client.on('ready', async () => {
       this.isConnected = true;
       this.logger.log('✅ WhatsApp Client is Ready!');
+      
+      try {
+        await this.client.sendMessage(this.ownerNumber, '🚀 מני, הבוט רץ ב-Railway ומחובר בהצלחה!');
+      } catch (e) {
+        this.logger.error('Failed to send startup message to owner');
+      }
     });
 
     this.client.on('authenticated', () => {
       this.logger.log('🔓 Authenticated successfully');
-    });
-
-    this.client.on('auth_failure', (msg) => {
-      this.logger.error('❌ Authentication failure:', msg);
     });
 
     this.client.initialize().catch((err) => {
@@ -67,28 +70,33 @@ export class WhatsappService implements OnModuleInit {
     caption: string,
   ): Promise<void> {
     if (!this.isConnected) {
-      this.logger.warn('Cannot send message: WhatsApp client is not connected');
+      this.logger.warn('Cannot send: Client not connected');
       return;
     }
 
     try {
-      const imagePath = join(
-        process.cwd(),
-        'assets',
-        'omer',
-        `${dayNumber}.jpg`,
-      );
-
+      const imagePath = join(process.cwd(), 'assets', 'omer', `${dayNumber}.jpg`);
+      
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
+        // שליחה לקבוצה
         await this.client.sendMessage(groupId, media, { caption });
-        this.logger.log(`✅ Message sent with image for day ${dayNumber}`);
+        
+        // שליחת עדכון אליך למספר האישי
+        await this.client.sendMessage(
+          this.ownerNumber, 
+          `✅ הודעת עומר (יום ${dayNumber}) נשלחה בהצלחה לקבוצה!`
+        );
+        
+        this.logger.log(`Success: Day ${dayNumber} sent to group and owner.`);
       } else {
+        // אם אין תמונה, שולח רק טקסט
         await this.client.sendMessage(groupId, caption);
-        this.logger.log(`✅ Message sent (text only) for day ${dayNumber}`);
+        await this.client.sendMessage(this.ownerNumber, `⚠️ הודעת טקסט נשלחה (תמונה ליום ${dayNumber} חסרה)`);
       }
     } catch (error) {
-      this.logger.error(`Error sending message: ${error.message}`);
+      this.logger.error(`Error in sendOmerMessage: ${error.message}`);
+      await this.client.sendMessage(this.ownerNumber, `❌ שגיאה בשליחת הודעת עומר: ${error.message}`);
     }
   }
 }
