@@ -6,8 +6,8 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(OmerSchedulerService.name);
-
   private targetTime: string | null = null;
+  private readonly ownerNumber = '972533011599@c.us';
 
   private readonly groups: string[] = [
     '120363301374326202@g.us',
@@ -22,36 +22,76 @@ export class OmerSchedulerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.logger.log(
-      'Omer Scheduler (TS) initialized. Calculating target time...',
-    );
-    await this.updateDailyTarget();
+    this.logger.log('Omer Scheduler (TS) initialized. Calculating target time...');
+    await this.updateDailyTarget('Initialization');
   }
 
-  // עדכון זמן היעד בכל בוקר ב-10:00
-  @Cron(CronExpression.EVERY_DAY_AT_10AM)
-  async updateDailyTarget(): Promise<void> {
+  // דגימה וחישוב ב-12:00 בצהריים + שליחת הודעה למני
+  @Cron('0 0 12 * * *')
+  async handleNoonCheck(): Promise<void> {
+    await this.updateDailyTarget('דגימת 12:00');
+  }
+
+  // דגימה וחישוב חוזר ב-16:00 בצהריים + שליחת הודעה למני
+  @Cron('0 0 16 * * *')
+  async handleAfternoonCheck(): Promise<void> {
+    await this.updateDailyTarget('בדיקה חוזרת 16:00');
+  }
+
+  // פונקציית הליבה לעדכון זמן היעד
+  async updateDailyTarget(source: string): Promise<void> {
     const zmanIso = await this.omerService.getZmanim();
     if (zmanIso) {
-      // חילוץ שעה ודקה בלבד (למשל "19:42")
-      this.targetTime = new Date(zmanIso).toISOString().substring(11, 16);
-      this.logger.log(
-        `Target time set to: ${this.targetTime} UTC (Tzeit HaKochavim)`,
+      // חילוץ שעה ודקה (HH:mm)
+      this.targetTime = new Date(zmanIso).getUTCHours().toString().padStart(2, '0') + ':' + 
+                        new Date(zmanIso).getUTCMinutes().toString().padStart(2, '0');
+      
+      const logMsg = `Target time set to: ${this.targetTime} UTC (Tzeit HaKochavim)`;
+      this.logger.log(`[${source}] ${logMsg}`);
+
+      // שליחת עדכון למני לוואטסאפ
+      await this.whatsappService.sendMessage(
+        this.ownerNumber, 
+        `🔍 ${source}: זמן השליחה להיום נקבע ל-${this.targetTime} (UTC).`
       );
     }
   }
 
-  // בדיקה כל דקה האם הגיע הזמן
+  // בדיקה כל דקה האם הגיע הזמן או האם אנחנו 10 דקות לפני
   @Cron(CronExpression.EVERY_MINUTE)
   async checkAndSend(): Promise<void> {
     if (!this.targetTime) return;
 
-    const currentTime = new Date().toISOString().substring(11, 16);
+    const now = new Date();
+    const currentTime = now.getUTCHours().toString().padStart(2, '0') + ':' + 
+                        now.getUTCMinutes().toString().padStart(2, '0');
 
+    // חישוב זמן של 10 דקות לפני
+    const targetDate = new Date();
+    const [targetH, targetM] = this.targetTime.split(':').map(Number);
+    targetDate.setUTCHours(targetH, targetM, 0, 0);
+    
+    const tenMinutesBeforeDate = new Date(targetDate.getTime() - 10 * 60000);
+    const tenMinutesBeforeTime = tenMinutesBeforeDate.getUTCHours().toString().padStart(2, '0') + ':' + 
+                                 tenMinutesBeforeDate.getUTCMinutes().toString().padStart(2, '0');
+
+    // 1. התראת 10 דקות לפני
+    if (currentTime === tenMinutesBeforeTime) {
+      await this.whatsappService.sendMessage(
+        this.ownerNumber,
+        `🔔 מני, בעוד 10 דקות בדיוק הודעת העומר תישלח לכל הקבוצות!`
+      );
+    }
+
+    // 2. זמן השליחה האמיתי
     if (currentTime === this.targetTime) {
       this.logger.log('✨ Tzeit HaKochavim reached! Executing sequence...');
       await this.sendDailyUpdate();
-      this.targetTime = null; // מניעת שליחה חוזרת באותה דקה
+      
+      // שליחת אישור סופי למני
+      await this.whatsappService.sendMessage(this.ownerNumber, `✅ הודעות העומר נשלחו בהצלחה לכל הקבוצות.`);
+      
+      this.targetTime = null; // מניעת שליחה חוזרת
     }
   }
 
@@ -67,7 +107,11 @@ export class OmerSchedulerService implements OnModuleInit {
         `תזכו למצוות! 🕯️`;
 
       for (const groupId of this.groups) {
-        await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
+        try {
+          await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
+        } catch (err) {
+          this.logger.error(`Failed to send to group ${groupId}: ${err.message}`);
+        }
       }
     }
   }

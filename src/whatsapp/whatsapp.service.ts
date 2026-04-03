@@ -9,7 +9,7 @@ export class WhatsappService implements OnModuleInit {
   private client: Client;
   private readonly logger = new Logger(WhatsappService.name);
   private isConnected = false;
-  // המספר שלך בפורמט וואטסאפ (972 במקום ה-0 הראשון)
+  // המספר שלך בפורמט וואטסאפ
   private readonly ownerNumber = '972533011599@c.us';
 
   constructor() {
@@ -21,7 +21,6 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        // ה-Dockerfile יוריד את הכרום למיקום הדיפולטיבי של Puppeteer
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -34,7 +33,6 @@ export class WhatsappService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    // הדפסת QR במידה וצריך התחברות מחדש
     this.client.on('qr', (qr: string) => {
       this.logger.log('--- QR CODE READY ---');
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
@@ -43,7 +41,6 @@ export class WhatsappService implements OnModuleInit {
       qrcode.generate(qr, { small: true });
     });
 
-    // ברגע שהבוט מתחבר בהצלחה
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.logger.log('✅ WhatsApp Client is Ready!');
@@ -64,6 +61,21 @@ export class WhatsappService implements OnModuleInit {
     });
   }
 
+  // פונקציה חדשה: שליחת הודעת טקסט כללית (לעדכונים והתראות)
+  async sendMessage(to: string, body: string): Promise<void> {
+    if (!this.isConnected) {
+      this.logger.warn(`Cannot send message to ${to}: Client not connected`);
+      return;
+    }
+    try {
+      await this.client.sendMessage(to, body);
+      this.logger.log(`Message sent successfully to ${to}`);
+    } catch (error) {
+      this.logger.error(`Error sending message to ${to}: ${error.message}`);
+    }
+  }
+
+  // פונקציה קיימת: שליחת הודעת עומר עם תמונה
   async sendOmerMessage(
     groupId: string,
     dayNumber: string,
@@ -79,24 +91,19 @@ export class WhatsappService implements OnModuleInit {
       
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        // שליחה לקבוצה
         await this.client.sendMessage(groupId, media, { caption });
         
-        // שליחת עדכון אליך למספר האישי
-        await this.client.sendMessage(
-          this.ownerNumber, 
-          `✅ הודעת עומר (יום ${dayNumber}) נשלחה בהצלחה לקבוצה!`
-        );
+        // שליחת עדכון אליך
+        await this.sendMessage(this.ownerNumber, `✅ הודעת עומר (יום ${dayNumber}) נשלחה בהצלחה לקבוצה!`);
         
-        this.logger.log(`Success: Day ${dayNumber} sent to group and owner.`);
+        this.logger.log(`Success: Day ${dayNumber} sent to group.`);
       } else {
-        // אם אין תמונה, שולח רק טקסט
         await this.client.sendMessage(groupId, caption);
-        await this.client.sendMessage(this.ownerNumber, `⚠️ הודעת טקסט נשלחה (תמונה ליום ${dayNumber} חסרה)`);
+        await this.sendMessage(this.ownerNumber, `⚠️ הודעת טקסט נשלחה (תמונה ליום ${dayNumber} חסרה)`);
       }
     } catch (error) {
       this.logger.error(`Error in sendOmerMessage: ${error.message}`);
-      await this.client.sendMessage(this.ownerNumber, `❌ שגיאה בשליחת הודעת עומר: ${error.message}`);
+      await this.sendMessage(this.ownerNumber, `❌ שגיאה בשליחת הודעת עומר: ${error.message}`);
     }
   }
 }
