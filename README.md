@@ -1,51 +1,46 @@
-# 🕯️ Omer-Bot: Smart AI-Driven WhatsApp Automation
+# 🕯️ Omer Counter Bot (NestJS + WhatsApp)
 
-**An automated daily reminder system for "Sefirat HaOmer" featuring dynamic "Zmanim" scheduling and handcrafted cinematic AI art.**
+An advanced, automated WhatsApp bot for Sefirat HaOmer, built with **NestJS** and **WhatsApp-web.js**, specifically optimized for seamless deployment on **Railway** via Docker.
 
----
-
-## 🚀 Overview
-Omer-Bot brings a high-end cinematic experience to the daily Omer count. Instead of static messages, the system fetches real-time astronomical data (Zmanim) to ensure each reminder is delivered exactly at the halachic time, providing a seamless blend of tradition and high-tech automation.
-
-## ✨ Key Features
-- **Dynamic "Zmanim" Scheduling:** Unlike static bots, this system calculates **Tzeit HaKochavim** (dusk) daily via the Hebcal API to trigger messages at the precise moment.
-- **Friday & Shabbat Logic:** Smart built-in logic that detects Fridays and sends the reminder **early (before Shabbat starts)**, ensuring users are prepared before the day of rest.
-- **Handcrafted AI Art:** 49 unique 8K cinematic renders—one for each day. Every image was manually prompted and curated to maintain a premium, consistent visual language.
-- **WhatsApp Integration:** Robust connection using `whatsapp-web.js` with session persistence.
-- **Cloud-Ready (Render.com):** Fully optimized for headless Linux environments with automated Chromium management.
+## 🚀 Key Features
+- **Automated Counting:** Calculates sunset times and automatically sends the daily counting message.
+- **Media Support:** Sends a dedicated image for each specific day from the `assets/omer` directory.
+- **Admin Management:** Personalized notifications to the administrator (Meni Levi) regarding connection status and successful deliveries.
+- **Cloud Stability:** Custom Docker configurations designed for running Puppeteer and Headless Chrome in Linux environments.
 
 ## 🛠️ Tech Stack
-- **Backend:** [NestJS](https://nestjs.com/) (Node.js & TypeScript)
-- **Automation:** [Puppeteer](https://pptr.dev/) & [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js/)
-- **Data Source:** [Hebcal API](https://www.hebcal.com/home/category/developers) (Zmanim & Omer Data)
-- **Art Direction:** Manually Crafted Generative AI Art (8K Cinematic Style)
-- **Deployment:** [Render](https://render.com/)
+- **Framework:** [NestJS](https://nestjs.com/)
+- **WhatsApp API:** [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js)
+- **Automation:** Puppeteer (Headless Chrome)
+- **Deployment:** Docker & [Railway](https://railway.app/)
+- **Scheduler:** `@nestjs/schedule`
 
-## 📦 Installation & Setup
+## 📂 Media Structure
+The bot retrieves daily images from the following path:
+`assets/omer/{dayNumber}.jpg`
+*Example: On the first day of counting, the bot will look for a file named `1.jpg`.*
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/YOUR_USERNAME/omer-bot.git](https://github.com/YOUR_USERNAME/omer-bot.git)
-   cd omer-bot
-Install dependencies:
+## ⚙️ Deployment Settings (Railway)
 
-Bash
-npm install
-npx puppeteer browsers install chrome
-Assets:
-Ensure your 49 handcrafted images are located in assets/omer/ named 1.jpg through 49.jpg.
+### Environment Variables
+Ensure the following variables are configured in your Railway dashboard:
+- `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`: `false`
+- `NODE_ENV`: `production`
 
-Run Locally:
+### Docker Engine
+The project utilizes a custom `Dockerfile` that installs all necessary Linux dependencies for Chrome:
+1. Installs system libraries (`libnss3`, `libgbm`, etc.).
+2. Downloads a compatible Chrome browser using `npx puppeteer browsers install chrome`.
 
-Bash
-npm run start:dev
-☁️ Deployment (Render.com)
-To successfully deploy on Render, use these settings:
+## 🖥️ Local Installation
+1. `npm install`
+2. `npm run start:dev`
+3. Scan the QR code generated in the terminal.
 
-Build Command: npm install && npx puppeteer browsers install chrome && npm run build
+## 📱 WhatsApp Authentication
+During the initial deployment on Railway, a QR code link will appear in the logs:
+`👉 Open this link to scan: https://api.qrserver.com/...`
+Open this link in your browser and scan it with your mobile device. The session is persistent and will remain connected automatically.
 
-Start Command: npm run start:prod
-
-Environment Variable: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = false
-
-Developed by Meni Levi Full-Stack Developer & Tech Content Creator
+## ✍️ Credits
+**Lead Developer:** Meni Levi - Full Stack Developer & AI Prompt Engineer.
