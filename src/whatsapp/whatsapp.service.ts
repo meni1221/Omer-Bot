@@ -25,8 +25,6 @@ export class WhatsappService implements OnModuleInit {
           '--disable-dev-shm-usage',
           '--disable-gpu',
         ],
-        // שינוי קריטי: במקום נתיב מלא, נותנים ל-Render למצוא את הכרום שהותקן
-        executablePath: process.platform === 'linux' ? '/usr/bin/google-chrome' : undefined,
       }
     });
   }
