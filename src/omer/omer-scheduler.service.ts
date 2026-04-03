@@ -31,9 +31,9 @@ export class OmerSchedulerService implements OnModuleInit {
     await this.updateDailyTarget('דגימת 12:00');
   }
 
-  @Cron('0 0 16 * * *')
+  @Cron('0 0 18 * * *')
   async handleAfternoonCheck(): Promise<void> {
-    await this.updateDailyTarget('בדיקה חוזרת 16:00');
+    await this.updateDailyTarget('בדיקה חוזרת 18:00');
   }
 
   async updateDailyTarget(source: string): Promise<void> {
