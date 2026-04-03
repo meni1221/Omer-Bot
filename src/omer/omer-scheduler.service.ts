@@ -43,13 +43,13 @@ export class OmerSchedulerService implements OnModuleInit {
         let targetDate = new Date(zmanIso);
         const dayOfWeek = new Date().getDay(); // 5 = Friday
 
-        // עדכון ליום שישי: שעה אחת לפני (60 דקות)
+        // עדכון ליום שישי: שעה ו-20 דקות לפני (80 דקות)
         if (dayOfWeek === 5) {
           this.logger.log(
-            '📅 Friday detected: Adjusting to 60 minutes before...',
+            '📅 Friday detected: Adjusting to 80 minutes before...',
           );
-          // הפחתה של 60 דקות (60 * 60 * 1000 מילישניות)
-          targetDate = new Date(targetDate.getTime() - 60 * 60 * 1000);
+          // הפחתה של 80 דקות (80 * 60 * 1000 מילישניות)
+          targetDate = new Date(targetDate.getTime() - 80 * 60 * 1000);
         }
 
         const hours = targetDate.getHours().toString().padStart(2, '0');
@@ -58,7 +58,8 @@ export class OmerSchedulerService implements OnModuleInit {
         this.targetTime = `${hours}:${minutes}`;
         this.logger.log(`[${source}] Target time set to: ${this.targetTime}`);
 
-        const dayType = dayOfWeek === 5 ? 'ערב שבת (שעה מראש)' : 'יום חול';
+        const dayType =
+          dayOfWeek === 5 ? 'ערב שבת (שעה ו-20 דקות מראש)' : 'יום חול';
         await this.whatsappService.sendMessage(
           this.ownerNumber,
           `🔍 ${source}: זמן השליחה ל${dayType} נקבע ל-${this.targetTime}.`,
