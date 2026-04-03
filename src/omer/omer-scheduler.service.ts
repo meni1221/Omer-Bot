@@ -6,11 +6,16 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(OmerSchedulerService.name);
-  
+
   // טיפוס מוגדר: או מחרוזת של זמן או null
   private targetTime: string | null = null;
-  
-  private readonly groups: string[] = ['120363301374326202@g.us'];
+
+  private readonly groups: string[] = [
+    '120363301374326202@g.us',
+    '120363267001121815@g.us',
+    '120363120170653605@g.us',
+    '120363426577586940@g.us',
+  ];
 
   constructor(
     private readonly omerService: OmerService,
@@ -18,7 +23,9 @@ export class OmerSchedulerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.logger.log('Omer Scheduler (TS) initialized. Calculating target time...');
+    this.logger.log(
+      'Omer Scheduler (TS) initialized. Calculating target time...',
+    );
     await this.updateDailyTarget();
   }
 
@@ -29,7 +36,9 @@ export class OmerSchedulerService implements OnModuleInit {
     if (zmanIso) {
       // חילוץ שעה ודקה בלבד (למשל "19:42")
       this.targetTime = new Date(zmanIso).toISOString().substring(11, 16);
-      this.logger.log(`Target time set to: ${this.targetTime} UTC (Tzeit HaKochavim)`);
+      this.logger.log(
+        `Target time set to: ${this.targetTime} UTC (Tzeit HaKochavim)`,
+      );
     }
   }
 
@@ -51,7 +60,7 @@ export class OmerSchedulerService implements OnModuleInit {
     const data = await this.omerService.getOmerData();
 
     if (data && data.day) {
-      const caption = 
+      const caption =
         `*ספירת העומר - הלילה ${data.day} ימים:*\n` +
         `${data.hebrew}\n\n` +
         `📢 להצטרפות לתזכורות יומיות:\n` +
