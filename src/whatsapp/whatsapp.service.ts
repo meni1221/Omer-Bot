@@ -31,17 +31,16 @@ export class WhatsappService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     this.client.on('qr', (qr: string) => {
-      this.logger.log('--- SCAN THIS QR CODE IN YOUR LOGS ---');
+      this.logger.log('--- SCAN QR CODE ---');
+      
+      // 1. מדפיס קישור לסריקה קלה בדפדפן (הפתרון לבעיית הטרמינל ב-Railway)
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+      console.log('\x1b[36m%s\x1b[0m', '👉 Open this link to scan:'); // מדפיס בכחול
+      console.log(qrImageUrl);
+      console.log('\n');
+
+      // 2. גיבוי: ה-QR המקורי בטרמינל
       qrcode.generate(qr, { small: true });
-    });
-
-    this.client.on('ready', () => {
-      this.isConnected = true;
-      this.logger.log('✅ WhatsApp Client is Ready!');
-    });
-
-    this.client.initialize().catch((err) => {
-      this.logger.error('Client Initialization Error:', err);
     });
   }
 
