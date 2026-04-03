@@ -11,16 +11,20 @@ export class WhatsappService implements OnModuleInit {
   private isConnected = false;
 
   constructor() {
+    const chromePath = existsSync('/usr/bin/google-chrome-stable')
+      ? '/usr/bin/google-chrome-stable'
+      : '/usr/bin/google-chrome';
+
     this.client = new Client({
       authStrategy: new LocalAuth(),
       webVersionCache: {
         type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        remotePath:
+          'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
       },
       puppeteer: {
         headless: true,
-        // הנתיב הסטנדרטי של כרום בתוך Docker (מותקן דרך apt-get)
-        executablePath: '/usr/bin/google-chrome',
+        executablePath: chromePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -34,10 +38,9 @@ export class WhatsappService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     this.client.on('qr', (qr: string) => {
       this.logger.log('--- SCAN QR CODE ---');
-      
-      // 1. מדפיס קישור לסריקה קלה בדפדפן (הפתרון לבעיית הטרמינל ב-Railway)
+
       const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
-      console.log('\x1b[36m%s\x1b[0m', '👉 Open this link to scan:'); // מדפיס בכחול
+      console.log('\x1b[36m%s\x1b[0m', '👉 Open this link to scan:');
       console.log(qrImageUrl);
       console.log('\n');
 
@@ -72,7 +75,7 @@ export class WhatsappService implements OnModuleInit {
       this.logger.warn('Cannot send message: WhatsApp client is not connected');
       return;
     }
-    
+
     try {
       const imagePath = join(
         process.cwd(),
@@ -80,7 +83,7 @@ export class WhatsappService implements OnModuleInit {
         'omer',
         `${dayNumber}.jpg`,
       );
-      
+
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
