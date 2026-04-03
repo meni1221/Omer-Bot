@@ -30,10 +30,6 @@ export class WhatsappService implements OnModuleInit {
           '--no-zygote',
           '--single-process',
         ],
-        executablePath:
-          process.env.CHROME_PATH ||
-          '/usr/bin/google-chrome-stable' ||
-          '/usr/bin/google-chrome',
       },
     });
   }
