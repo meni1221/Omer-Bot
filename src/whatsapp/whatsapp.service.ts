@@ -26,6 +26,14 @@ export class WhatsappService implements OnModuleInit {
           '--disable-dev-shm-usage',
           '--disable-gpu',
         ],
+        executablePath: join(
+          process.cwd(),
+          'chrome',
+          'chrome',
+          'linux-146.0.7680.153',
+          'chrome-linux64',
+          'chrome',
+        ),
       },
     });
   }
