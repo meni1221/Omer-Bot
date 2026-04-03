@@ -7,7 +7,6 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 export class OmerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(OmerSchedulerService.name);
 
-  // טיפוס מוגדר: או מחרוזת של זמן או null
   private targetTime: string | null = null;
 
   private readonly groups: string[] = [
