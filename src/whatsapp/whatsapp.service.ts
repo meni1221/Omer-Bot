@@ -15,7 +15,8 @@ export class WhatsappService implements OnModuleInit {
       authStrategy: new LocalAuth(),
       webVersionCache: {
         type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        remotePath:
+          'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
       },
       puppeteer: {
         headless: true,
@@ -25,7 +26,8 @@ export class WhatsappService implements OnModuleInit {
           '--disable-dev-shm-usage',
           '--disable-gpu',
         ],
-      }
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      },
     });
   }
 
@@ -40,15 +42,24 @@ export class WhatsappService implements OnModuleInit {
       this.logger.log('✅ WhatsApp Client is Ready!');
     });
 
-    this.client.initialize().catch(err => {
+    this.client.initialize().catch((err) => {
       this.logger.error('Client Initialization Error:', err);
     });
   }
 
-  async sendOmerMessage(groupId: string, dayNumber: string, caption: string): Promise<void> {
+  async sendOmerMessage(
+    groupId: string,
+    dayNumber: string,
+    caption: string,
+  ): Promise<void> {
     if (!this.isConnected) return;
     try {
-      const imagePath = join(process.cwd(), 'assets', 'omer', `${dayNumber}.jpg`);
+      const imagePath = join(
+        process.cwd(),
+        'assets',
+        'omer',
+        `${dayNumber}.jpg`,
+      );
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
