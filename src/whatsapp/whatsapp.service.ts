@@ -11,16 +11,6 @@ export class WhatsappService implements OnModuleInit {
   private isConnected = false;
 
   constructor() {
-    const puppeteerArgs = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-    ];
-
     this.client = new Client({
       authStrategy: new LocalAuth(),
       webVersionCache: {
@@ -29,11 +19,14 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        args: puppeteerArgs,
-        // בשרת Render הכרום מותקן בנתיב מסוים אחרי הפקודה npx puppeteer browsers install chrome
-        executablePath: process.platform === 'linux' 
-          ? '/opt/render/.cache/puppeteer/chrome/linux-125.0.6422.60/chrome-linux64/chrome' 
-          : undefined, 
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+        ],
+        // שינוי קריטי: במקום נתיב מלא, נותנים ל-Render למצוא את הכרום שהותקן
+        executablePath: process.platform === 'linux' ? '/usr/bin/google-chrome' : undefined,
       }
     });
   }
@@ -44,54 +37,28 @@ export class WhatsappService implements OnModuleInit {
       qrcode.generate(qr, { small: true });
     });
 
-    this.client.on('authenticated', () => {
-      this.logger.log('Authenticated successfully!');
-    });
-
-    this.client.on('auth_failure', (msg: string) => {
-      this.logger.error(`Authentication failure: ${msg}`);
-    });
-
     this.client.on('ready', () => {
       this.isConnected = true;
       this.logger.log('✅ WhatsApp Client is Ready!');
     });
 
-    // צייד ID - עוזר למצוא ID של קבוצות חדשות מהלוגים
-    this.client.on('message_create', async (msg) => {
-      if (msg.fromMe) {
-        const chat = await msg.getChat();
-        if (chat.isGroup) {
-          this.logger.log(`[ID HUNTER] Group: ${chat.name} | ID: ${chat.id._serialized}`);
-        }
-      }
-    });
-
-    this.logger.log('Initializing WhatsApp Client...');
     this.client.initialize().catch(err => {
       this.logger.error('Client Initialization Error:', err);
     });
   }
 
   async sendOmerMessage(groupId: string, dayNumber: string, caption: string): Promise<void> {
-    if (!this.isConnected) {
-      this.logger.error('Failed to send: Client not connected');
-      return;
-    }
-
+    if (!this.isConnected) return;
     try {
       const imagePath = join(process.cwd(), 'assets', 'omer', `${dayNumber}.jpg`);
-      
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
-        this.logger.log(`Successfully sent Day ${dayNumber} image to ${groupId}`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        this.logger.log(`Image ${dayNumber}.jpg not found. Sent text only to ${groupId}`);
       }
     } catch (error) {
-      this.logger.error(`Error sending message to ${groupId}: ${error.message}`);
+      this.logger.error(`Error sending: ${error.message}`);
     }
   }
 }
