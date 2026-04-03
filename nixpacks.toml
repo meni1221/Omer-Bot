@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["nodejs-20_x", "cacert", "glib", "nss", "nspr", "atk", "at-spi2-atk", "libdrm", "expat", "libxcb", "libX11", "libXcomposite", "libXdamage", "libXext", "libXfixes", "libXrandr", "libgbm", "pango", "cairo"]
-
-[phases.build]
-cmds = ["npm install", "npm run build"]
-
-[start]
-cmd = "npm run start:prod"

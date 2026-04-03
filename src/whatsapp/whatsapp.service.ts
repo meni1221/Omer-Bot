@@ -24,11 +24,6 @@ export class WhatsappService implements OnModuleInit {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-setuid-sandbox',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
         ],
       },
     });
