@@ -11,10 +11,7 @@ export class OmerService {
       const url = `https://www.hebcal.com/zmanim?cfg=json&latitude=32.0840&longitude=34.8340&tzid=Asia/Jerusalem`;
       const { data } = await axios.get(url, { timeout: 10000 });
 
-      const zman =
-        data?.times?.tzeit7085deg ||
-        data?.times?.tzeit85deg ||
-        data?.times?.tzeit72min;
+      const zman = data?.times?.tzeit7085deg || data?.times?.tzeit85deg;
       return zman || null;
     } catch (e) {
       this.logger.error(`Hebcal API Error: ${e.message}`);
