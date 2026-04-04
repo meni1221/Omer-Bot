@@ -8,23 +8,25 @@ export class OmerService {
 
   async getZmanim(): Promise<string | null> {
     try {
-      // מעבר לקואורדינטות של בני ברק - זה הכי אמין ב-Hebcal
-      const lat = '32.0840';
-      const lng = '34.8340';
-      const url = `https://www.hebcal.com/zmanim?cfg=json&latitude=${lat}&longitude=${lng}&tzid=Asia/Jerusalem`;
+      const url = `https://www.hebcal.com/zmanim?cfg=json&latitude=32.0840&longitude=34.8340&tzid=Asia/Jerusalem`;
+      this.logger.log(`Fetching from: ${url}`);
 
       const { data } = await axios.get(url);
 
-      // בפורמט הזה הזמנים נמצאים תחת data.times
-      // ננסה קודם את tzeit7085deg, ואם לא קיים - ניקח את tzeit85deg (שהוא כמעט זהה)
-      const zman = data?.times?.tzeit7085deg || data?.times?.tzeit85deg;
-
-      if (!zman) {
-        this.logger.warn('Could not find Tzeit types in Hebcal response');
-        return null;
+      // הדפסת כל השדות שחזרו ב-times כדי שנראה מה השמות שלהם
+      if (data?.times) {
+        this.logger.log(
+          `Available times: ${Object.keys(data.times).join(', ')}`,
+        );
       }
 
-      return zman;
+      // ננסה כמה אופציות לצאת הכוכבים בסדר יורד
+      const zman =
+        data?.times?.tzeit7085deg ||
+        data?.times?.tzeit85deg ||
+        data?.times?.tzeit72min;
+
+      return zman || null;
     } catch (e) {
       this.logger.error(`Hebcal API Error: ${e.message}`);
       return null;
@@ -38,12 +40,8 @@ export class OmerService {
       );
       const item = data.items?.find((i: any) => i.category === 'omer');
       if (!item) return null;
-
       const dayMatch = item.title.match(/\d+/);
-      return {
-        day: dayMatch ? dayMatch[0] : '',
-        hebrew: item.hebrew,
-      };
+      return { day: dayMatch ? dayMatch[0] : '', hebrew: item.hebrew };
     } catch (e) {
       this.logger.error('Failed to fetch Omer data');
       return null;

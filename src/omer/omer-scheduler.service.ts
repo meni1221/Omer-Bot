@@ -24,48 +24,30 @@ export class OmerSchedulerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.logger.log('🚀 Omer Bot Starting Up...');
+    this.logger.log('🚀 Omer Bot Initializing...');
     this.startupTime = Date.now();
-
-    // ניסיון ראשוני
+    
+    await this.whatsappService.sendMessage(this.ownerNumber, '🤖 הבוט עלה בהצלחה! מתחיל לסרוק זמנים...').catch(() => {});
     await this.refreshZmanim();
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
   async handleEveryMinute(): Promise<void> {
     const now = new Date();
-    const currentTime =
-      now.getHours().toString().padStart(2, '0') +
-      ':' +
-      now.getMinutes().toString().padStart(2, '0');
+    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
     const today = now.getDate();
 
-    const previousTarget = this.targetTime;
     await this.refreshZmanim();
 
-    // אם לא היה זמן יעד ועכשיו יש - שלח הודעה מיידית למני שזה הסתדר
-    if (!previousTarget && this.targetTime) {
-      await this.whatsappService.sendMessage(
-        this.ownerNumber,
-        `✅ הזמנים נמשכו בהצלחה! זמן שליחה להיום: ${this.targetTime}`,
-      );
-    }
-
-    if (!this.targetTime) return;
-
-    // דיווח התנעה: ב-10 דקות הראשונות, כל 2 דקות
     const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
     if (minutesSinceStartup <= 10 && now.getMinutes() % 2 === 0) {
-      await this.whatsappService
-        .sendMessage(
-          this.ownerNumber,
-          `⚡ *דיווח התנעה (דקה ${Math.round(minutesSinceStartup)})*\nזמן שליחה מתוכנן: *${this.targetTime}*`,
-        )
-        .catch(() => {});
+      const msg = this.targetTime 
+        ? `⚡ *דיווח התנעה (דקה ${Math.round(minutesSinceStartup)})*\nזמן שליחה מתוכנן: *${this.targetTime}*`
+        : `⚠️ *דיווח התנעה:* לא הצלחתי למשוך זמנים.`;
+      await this.whatsappService.sendMessage(this.ownerNumber, msg).catch(() => {});
     }
 
-    // בדיקת זמן שליחה
-    if (currentTime === this.targetTime && this.lastSentDay !== today) {
+    if (this.targetTime && currentTime === this.targetTime && this.lastSentDay !== today) {
       await this.sendDailyUpdate();
       this.lastSentDay = today;
     }
@@ -73,13 +55,11 @@ export class OmerSchedulerService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_HOUR)
   async sendHourlyStatus(): Promise<void> {
-    if (this.targetTime) {
+    const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
+    if (this.targetTime && minutesSinceStartup > 10) {
       const now = new Date();
       const currentHour = now.getHours().toString().padStart(2, '0') + ':00';
-      await this.whatsappService.sendMessage(
-        this.ownerNumber,
-        `🕒 *דיווח שעתי (${currentHour})*\nזמן שליחה: *${this.targetTime}*`,
-      );
+      await this.whatsappService.sendMessage(this.ownerNumber, `🕒 *דיווח שעתי (${currentHour})*\nזמן שליחה מתוכנן: *${this.targetTime}*`);
     }
   }
 
@@ -89,40 +69,36 @@ export class OmerSchedulerService implements OnModuleInit {
       if (!zmanIso) return;
 
       const dateObj = new Date(zmanIso);
-      const dayOfWeek = new Date().getDay();
-
-      if (dayOfWeek === 5) {
+      if (dateObj.getDay() === 5) {
         dateObj.setTime(dateObj.getTime() - 80 * 60 * 1000);
       }
 
-      this.targetTime =
-        dateObj.getHours().toString().padStart(2, '0') +
-        ':' +
-        dateObj.getMinutes().toString().padStart(2, '0');
+      this.targetTime = dateObj.getHours().toString().padStart(2, '0') + ':' + 
+                        dateObj.getMinutes().toString().padStart(2, '0');
     } catch (e) {
-      this.logger.error(`Error refreshing Zmanim: ${e.message}`);
+      this.logger.error(`Refresh error: ${e.message}`);
     }
   }
 
   private async sendDailyUpdate(): Promise<void> {
     const data = await this.omerService.getOmerData();
     if (data && data.day) {
-      const caption = `*ספירת העומר - הלילה ${data.day} ימים:*\n${data.hebrew}\n\n📢 הצטרפו לתזכורת :\nhttps://chat.whatsapp.com/I8bONiOPYoi8a7QnYT9p5a?mode=gi_t\n\nתזכו למצוות! 🕯️\n\nשימו לב שעברנו לעבודה עם רובוט 🤖`;
+      // הטקסט המקורי שלך בדיוק
+      const caption = 
+        `ספירת העומר\n\n` +
+        `📢 הצטרפו לתזכורת  :\n` +
+        `https://chat.whatsapp.com/I8bONiOPYoi8a7QnYT9p5a?mode=gi_t\n\n` +
+        `תזכו למצוות!  \n\n` +
+        `שימו לב שעברנו לעבודה עם רובוט 🤖`;
+
       for (const groupId of this.groups) {
         try {
-          await this.whatsappService.sendOmerMessage(
-            groupId,
-            data.day,
-            caption,
-          );
+          await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
         } catch (err) {
           this.logger.error(`Failed to send to group ${groupId}`);
         }
       }
-      await this.whatsappService.sendMessage(
-        this.ownerNumber,
-        `✅ הודעות העומר נשלחו.`,
-      );
+      await this.whatsappService.sendMessage(this.ownerNumber, `✅ הודעות העומר נשלחו.`);
     }
   }
 }
