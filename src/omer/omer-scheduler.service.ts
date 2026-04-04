@@ -100,7 +100,13 @@ export class OmerSchedulerService implements OnModuleInit {
   private async sendDailyUpdate(): Promise<void> {
     const data = await this.omerService.getOmerData();
     if (data && data.day) {
-      const caption = `*ספירת העומר - הלילה ${data.day} ימים:*\n${data.hebrew}\n\nתזכו למצוות! 🕯️`;
+      const caption =
+        `*ספירת העומר - הלילה ${data.day} ימים:*\n` +
+        `${data.hebrew}\n\n` +
+        `📢 הצטרפו לתזכורת :\n` +
+        `https://chat.whatsapp.com/I8bONiOPYoi8a7QnYT9p5a?mode=gi_t\n\n` +
+        `תזכו למצוות! 🕯️\n\n` +
+        `שימו לב שעברנו לעבודה עם רובוט 🤖`;
       for (const groupId of this.groups) {
         try {
           await this.whatsappService.sendOmerMessage(
