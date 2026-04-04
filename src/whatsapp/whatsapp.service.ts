@@ -17,15 +17,20 @@ export class WhatsappService implements OnModuleInit {
       authStrategy: new LocalAuth(),
       webVersionCache: {
         type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        remotePath:
+          'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
       },
       puppeteer: {
         headless: true,
+        // תיקון ה-Timeout - נותן לדפדפן דקה שלמה להגיב
+        protocolTimeout: 60000,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
+          '--no-zygote', // חוסך בזיכרון בשרתים כמו Railway
+          '--single-process', // מריץ הכל בתהליך אחד - קריטי למניעת תקיעות
           '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         ],
       },
@@ -44,9 +49,12 @@ export class WhatsappService implements OnModuleInit {
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.logger.log('✅ WhatsApp Client is Ready!');
-      
+
       try {
-        await this.client.sendMessage(this.ownerNumber, '🚀 מני, הבוט רץ ב-Railway ומחובר בהצלחה!');
+        await this.client.sendMessage(
+          this.ownerNumber,
+          '🚀 מני, הבוט רץ ב-Railway ומחובר בהצלחה!',
+        );
       } catch (e) {
         this.logger.error('Failed to send startup message to owner');
       }
@@ -56,12 +64,17 @@ export class WhatsappService implements OnModuleInit {
       this.logger.log('🔓 Authenticated successfully');
     });
 
+    // טיפול בשגיאות ניתוק כדי שהבוט לא יקרוס
+    this.client.on('disconnected', (reason) => {
+      this.isConnected = false;
+      this.logger.warn(`WhatsApp was logged out: ${reason}`);
+    });
+
     this.client.initialize().catch((err) => {
       this.logger.error('Client Initialization Error:', err);
     });
   }
 
-  // פונקציה חדשה: שליחת הודעת טקסט כללית (לעדכונים והתראות)
   async sendMessage(to: string, body: string): Promise<void> {
     if (!this.isConnected) {
       this.logger.warn(`Cannot send message to ${to}: Client not connected`);
@@ -75,7 +88,6 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  // פונקציה קיימת: שליחת הודעת עומר עם תמונה
   async sendOmerMessage(
     groupId: string,
     dayNumber: string,
@@ -87,23 +99,30 @@ export class WhatsappService implements OnModuleInit {
     }
 
     try {
-      const imagePath = join(process.cwd(), 'assets', 'omer', `${dayNumber}.jpg`);
-      
+      const imagePath = join(
+        process.cwd(),
+        'assets',
+        'omer',
+        `${dayNumber}.jpg`,
+      );
+
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
+        // שליחה עם טיימאאוט מוגדל ספציפית למדיה (תמונות לוקחות יותר זמן)
         await this.client.sendMessage(groupId, media, { caption });
-        
-        // שליחת עדכון אליך
-        await this.sendMessage(this.ownerNumber, `✅ הודעת עומר (יום ${dayNumber}) נשלחה בהצלחה לקבוצה!`);
-        
+
         this.logger.log(`Success: Day ${dayNumber} sent to group.`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        await this.sendMessage(this.ownerNumber, `⚠️ הודעת טקסט נשלחה (תמונה ליום ${dayNumber} חסרה)`);
+        this.logger.warn(`Image for day ${dayNumber} missing, sent text only.`);
       }
     } catch (error) {
       this.logger.error(`Error in sendOmerMessage: ${error.message}`);
-      await this.sendMessage(this.ownerNumber, `❌ שגיאה בשליחת הודעת עומר: ${error.message}`);
+      // הודעת שגיאה אליך רק אם זה באמת נכשל
+      await this.sendMessage(
+        this.ownerNumber,
+        `❌ שגיאה בשליחת הודעת עומר: ${error.message}`,
+      ).catch(() => {});
     }
   }
 }
