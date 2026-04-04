@@ -2,21 +2,14 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OmerService } from './omer.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-import { join } from 'path';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger('OmerScheduler');
   private targetTime: string | null = null;
+  private lastSentDay: number | null = null;
   private startupTime: number = 0;
   private isProcessing = false;
-
-  private readonly lastSentPath = join(
-    process.cwd(),
-    '.wwebjs_auth',
-    'last_sent.txt',
-  );
   private readonly ownerNumber = '972533011599@c.us';
 
   private readonly groups: string[] = [
@@ -33,34 +26,8 @@ export class OmerSchedulerService implements OnModuleInit {
 
   async onModuleInit() {
     this.startupTime = Date.now();
-    this.logger.log('🚀 Omer Scheduler עלה עם זיכרון קשיח (File-Based)');
+    this.logger.log('🚀 Omer Scheduler עלה (מצב חכם ללא Volume)');
     await this.refreshZmanim();
-  }
-
-  private hasAlreadySentToday(): boolean {
-    const today = new Date().toLocaleDateString('en-GB');
-    if (existsSync(this.lastSentPath)) {
-      const lastSent = readFileSync(this.lastSentPath, 'utf8').trim();
-      return lastSent === today;
-    }
-    return false;
-  }
-
-  private async markAsSentToday() {
-    const today = new Date().toLocaleDateString('en-GB');
-    try {
-      writeFileSync(this.lastSentPath, today, 'utf8');
-      this.logger.log(`💾 נרשמה שליחה מוצלחת לתאריך: ${today}`);
-
-      await this.whatsappService
-        .sendMessage(
-          this.ownerNumber,
-          `💾 *רישום מערכת:* השליחה להיום (${today}) נרשמה בזיכרון הקשיח ולא תבוצע שוב.`,
-        )
-        .catch(() => {});
-    } catch (e) {
-      this.logger.error(`❌ שגיאה ברישום לקובץ: ${e.message}`);
-    }
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -90,17 +57,37 @@ export class OmerSchedulerService implements OnModuleInit {
         .catch(() => {});
     }
 
-    if (currentTime >= this.targetTime && !this.hasAlreadySentToday()) {
+    if (currentTime >= this.targetTime && this.lastSentDay !== now.getDate()) {
+      const nowTotalMinutes = now.getHours() * 60 + now.getMinutes();
+      const [targetH, targetM] = this.targetTime.split(':').map(Number);
+      const targetTotalMinutes = targetH * 60 + targetM;
+      const diffMinutes = nowTotalMinutes - targetTotalMinutes;
+
       if (now.getHours() < 5) {
-        this.logger.warn('🕒 שעה לא מתאימה לשליחה בדיעבד, מדלג...');
+        this.lastSentDay = now.getDate();
         return;
       }
 
-      this.logger.log(`⚠️ מפעיל שליחה יומית...`);
+      if (diffMinutes > 30 && minutesSinceStartup < 5) {
+        this.logger.warn(
+          `⚠️ זיהיתי Restart מאוחר (${diffMinutes} דקות אחרי היעד). מניח שכבר נשלח. מדלג.`,
+        );
+        this.lastSentDay = now.getDate();
+        await this.whatsappService
+          .sendMessage(
+            this.ownerNumber,
+            `⚠️ שים לב: הבוט עלה ב-Restart מאוחר ומניח שכבר נשלח היום ב-${this.targetTime}.`,
+          )
+          .catch(() => {});
+        return;
+      }
+
+      this.logger.log(`⚠️ מפעיל שליחה יומית ליום ${now.getDate()}...`);
       this.isProcessing = true;
       try {
         await this.sendDailyUpdate();
-        this.markAsSentToday();
+        this.lastSentDay = now.getDate();
+        this.logger.log(`✅ סיום סבב שליחה מוצלח.`);
       } catch (e) {
         this.logger.error(`❌ כשל בשליחה: ${e.message}`);
       } finally {
@@ -110,13 +97,18 @@ export class OmerSchedulerService implements OnModuleInit {
   }
 
   private async refreshZmanim() {
-    const zmanIso = await this.omerService.getZmanim();
-    if (zmanIso) {
-      const dateObj = new Date(zmanIso);
-      this.targetTime =
-        dateObj.getHours().toString().padStart(2, '0') +
-        ':' +
-        dateObj.getMinutes().toString().padStart(2, '0');
+    try {
+      const zmanIso = await this.omerService.getZmanim();
+      if (zmanIso) {
+        const dateObj = new Date(zmanIso);
+        this.targetTime =
+          dateObj.getHours().toString().padStart(2, '0') +
+          ':' +
+          dateObj.getMinutes().toString().padStart(2, '0');
+        this.logger.log(`📍 זמן מטרה עודכן: ${this.targetTime}`);
+      }
+    } catch (e) {
+      this.logger.error('Error refreshing zmanim');
     }
   }
 
