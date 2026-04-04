@@ -7,13 +7,15 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 export class OmerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(OmerSchedulerService.name);
   private targetTime: string | null = null;
+  private lastSentDay: number | null = null;
+  private startupTime: number = 0; // זמן עליית השרת במילישניות
   private readonly ownerNumber = '972533011599@c.us';
 
   private readonly groups: string[] = [
     '120363301374326202@g.us',
-    '120363267001121815@g.us',
-    '120363120170653605@g.us',
-    '120363426577586940@g.us',
+    // '120363267001121815@g.us',
+    // '120363120170653605@g.us',
+    // '120363426577586940@g.us',
   ];
 
   constructor(
@@ -22,86 +24,76 @@ export class OmerSchedulerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.logger.log('🚀 Startup: Running initial target time calculation...');
-    await this.updateDailyTarget('הפעלת שרת');
-  }
-
-  @Cron('0 0 12 * * *')
-  async handleNoonCheck(): Promise<void> {
-    await this.updateDailyTarget('דגימת 12:00');
-  }
-
-  @Cron('0 0 16 * * *')
-  async handleAfternoonCheck(): Promise<void> {
-    await this.updateDailyTarget('בדיקה חוזרת 16:00');
-  }
-
-  async updateDailyTarget(source: string): Promise<void> {
-    try {
-      const zmanIso = await this.omerService.getZmanim();
-      if (zmanIso) {
-        let targetDate = new Date(zmanIso);
-        const dayOfWeek = new Date().getDay(); // 5 = Friday
-
-        // עדכון ליום שישי: שעה ו-20 דקות לפני (80 דקות)
-        if (dayOfWeek === 5) {
-          this.logger.log(
-            '📅 Friday detected: Adjusting to 80 minutes before...',
-          );
-          // הפחתה של 80 דקות (80 * 60 * 1000 מילישניות)
-          targetDate = new Date(targetDate.getTime() - 80 * 60 * 1000);
-        }
-
-        const hours = targetDate.getHours().toString().padStart(2, '0');
-        const minutes = targetDate.getMinutes().toString().padStart(2, '0');
-
-        this.targetTime = `${hours}:${minutes}`;
-        this.logger.log(`[${source}] Target time set to: ${this.targetTime}`);
-
-        const dayType =
-          dayOfWeek === 5 ? 'ערב שבת (שעה ו-20 דקות מראש)' : 'יום חול';
-        await this.whatsappService.sendMessage(
-          this.ownerNumber,
-          `🔍 ${source}: זמן השליחה ל${dayType} נקבע ל-${this.targetTime}.`,
-        );
-      }
-    } catch (e) {
-      this.logger.error(`Failed to update target time: ${e.message}`);
-    }
+    this.logger.log('🚀 Omer Bot Starting Up...');
+    this.startupTime = Date.now(); // מתעד את זמן העלייה
+    await this.refreshZmanim();
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
-  async checkAndSend(): Promise<void> {
-    if (!this.targetTime) return;
-
+  async handleEveryMinute(): Promise<void> {
     const now = new Date();
     const currentTime =
       now.getHours().toString().padStart(2, '0') +
       ':' +
       now.getMinutes().toString().padStart(2, '0');
+    const today = now.getDate();
 
-    // התראת 10 דקות לפני
-    const targetDate = new Date();
-    const [h, m] = this.targetTime.split(':').map(Number);
-    targetDate.setHours(h, m, 0, 0);
+    await this.refreshZmanim();
 
-    const tenMinBefore = new Date(targetDate.getTime() - 10 * 60000);
-    const tenMinBeforeStr =
-      tenMinBefore.getHours().toString().padStart(2, '0') +
-      ':' +
-      tenMinBefore.getMinutes().toString().padStart(2, '0');
+    if (!this.targetTime) return;
 
-    if (currentTime === tenMinBeforeStr) {
+    // --- לוגיקת הדיווח המזורז (10 דקות ראשונות, כל 2 דקות) ---
+    const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
+    if (minutesSinceStartup <= 10 && now.getMinutes() % 2 === 0) {
       await this.whatsappService.sendMessage(
         this.ownerNumber,
-        `🔔 מני, בעוד 10 דקות הודעת העומר תישלח לכל הקבוצות!`,
+        `⚡ *דיווח התנעה (דקה ${Math.round(minutesSinceStartup)})*\nזמן שליחה מתוכנן: *${this.targetTime}*`,
       );
     }
 
-    if (currentTime === this.targetTime) {
-      this.logger.log('✨ Target time reached! Sending updates...');
+    // שליחה לקבוצות בזמן היעד
+    if (currentTime === this.targetTime && this.lastSentDay !== today) {
+      this.logger.log(
+        `✨ Time reached (${this.targetTime})! Sending Omer sequence...`,
+      );
       await this.sendDailyUpdate();
-      this.targetTime = null;
+      this.lastSentDay = today;
+    }
+  }
+
+  // דיווח שעתי רגיל (אחרי שחלפו 10 הדקות הראשונות)
+  @Cron(CronExpression.EVERY_HOUR)
+  async sendHourlyStatus(): Promise<void> {
+    const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
+    if (this.targetTime && minutesSinceStartup > 10) {
+      const now = new Date();
+      const currentHour = now.getHours().toString().padStart(2, '0') + ':00';
+
+      await this.whatsappService.sendMessage(
+        this.ownerNumber,
+        `🕒 *דיווח שעתי (${currentHour})*\nזמן שליחה מתוכנן: *${this.targetTime}*`,
+      );
+    }
+  }
+
+  private async refreshZmanim(): Promise<void> {
+    try {
+      const zmanIso = await this.omerService.getZmanim();
+      if (!zmanIso) return;
+
+      let targetDate = new Date(zmanIso);
+      const dayOfWeek = new Date().getDay();
+
+      if (dayOfWeek === 5) {
+        targetDate = new Date(targetDate.getTime() - 80 * 60 * 1000); // 80 דקות לפני בשישי
+      }
+
+      this.targetTime =
+        targetDate.getHours().toString().padStart(2, '0') +
+        ':' +
+        targetDate.getMinutes().toString().padStart(2, '0');
+    } catch (e) {
+      this.logger.error(`Error refreshing Zmanim: ${e.message}`);
     }
   }
 
@@ -110,11 +102,19 @@ export class OmerSchedulerService implements OnModuleInit {
     if (data && data.day) {
       const caption = `*ספירת העומר - הלילה ${data.day} ימים:*\n${data.hebrew}\n\nתזכו למצוות! 🕯️`;
       for (const groupId of this.groups) {
-        await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
+        try {
+          await this.whatsappService.sendOmerMessage(
+            groupId,
+            data.day,
+            caption,
+          );
+        } catch (err) {
+          this.logger.error(`Failed to send to group ${groupId}`);
+        }
       }
       await this.whatsappService.sendMessage(
         this.ownerNumber,
-        `✅ הודעות העומר נשלחו (יום ${data.day}).`,
+        `✅ הודעות העומר נשלחו.`,
       );
     }
   }
