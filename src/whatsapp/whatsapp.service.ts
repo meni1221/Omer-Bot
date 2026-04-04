@@ -12,16 +12,14 @@ export class WhatsappService implements OnModuleInit {
   private isInitializing = false;
   private readonly ownerNumber = '972533011599@c.us';
 
-  constructor() {
-    this.initializeClient();
+  async onModuleInit() {
+    await this.initializeClient();
   }
 
-  private initializeClient() {
+  private async initializeClient() {
     if (this.isInitializing) return;
     this.isInitializing = true;
     this.isConnected = false;
-
-    this.logger.log('🛠️ Initializing WhatsApp Client...');
 
     this.client = new Client({
       authStrategy: new LocalAuth(),
@@ -32,8 +30,7 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        protocolTimeout: 60000,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // חשוב ל-Railway
+        protocolTimeout: 0,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -41,80 +38,63 @@ export class WhatsappService implements OnModuleInit {
           '--disable-gpu',
           '--no-zygote',
           '--single-process',
+          '--disable-renderer-backgrounding', // מונע מהדף "להירדם"
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
         ],
       },
     });
 
-    this.setupEventListeners();
-
-    this.client.initialize().catch((err) => {
-      this.logger.error('Client Init Error:', err);
-      this.isInitializing = false;
-    });
-  }
-
-  private setupEventListeners() {
-    this.client.on('qr', (qr: string) => {
+    this.client.on('qr', (qr) => {
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
       console.log('👉 QR Link:', qrLink);
-      qrcode.generate(qr, { small: true });
+      // qrcode.generate(qr, { small: true });
       this.isInitializing = false;
     });
 
-    this.client.on('ready', () => {
+    this.client.on('ready', async () => {
       this.isConnected = true;
       this.isInitializing = false;
-      this.logger.log('✅ WhatsApp Client is Ready!');
+      this.logger.log('✅ Connected!');
+      // שליחה שקטה של הודעת התנעה
+      this.client
+        .sendMessage(this.ownerNumber, '🚀 הבוט התחבר מחדש.')
+        .catch(() => {});
     });
 
-    this.client.on('disconnected', async (reason) => {
-      this.logger.warn(`WhatsApp disconnected: ${reason}`);
-      this.handleRestart();
-    });
+    this.client.on('disconnected', () => this.handleRestart());
 
-    this.client.on('auth_failure', () => {
-      this.logger.error('Auth failure, restarting...');
+    try {
+      await this.client.initialize();
+    } catch (err) {
       this.handleRestart();
-    });
+    }
   }
 
   private async handleRestart() {
+    if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
+    this.logger.warn('🔄 Frame detached or Session lost. Restarting...');
     try {
       await this.client.destroy();
     } catch (e) {}
-    this.logger.log('🔄 Restarting Client in 5 seconds...');
-    setTimeout(() => this.initializeClient(), 5000);
+    setTimeout(() => this.initializeClient(), 10000);
   }
 
-  async onModuleInit(): Promise<void> {
-    // האתחול קורה ב-Constructor
-  }
-
-  async sendMessage(to: string, body: string): Promise<void> {
-    if (!this.isConnected) {
-      this.logger.warn('Cannot send: Client not ready');
-      return;
-    }
+  async sendMessage(to: string, body: string) {
+    if (!this.isConnected) return;
     try {
       await this.client.sendMessage(to, body);
-    } catch (error) {
-      this.logger.error(`Send error: ${error.message}`);
-      if (
-        error.message.includes('detached Frame') ||
-        error.message.includes('Session closed')
-      ) {
+    } catch (e) {
+      this.logger.error(`Send error: ${e.message}`);
+      if (e.message.includes('Frame') || e.message.includes('detached')) {
         this.handleRestart();
       }
     }
   }
 
-  async sendOmerMessage(
-    groupId: string,
-    dayNumber: string,
-    caption: string,
-  ): Promise<void> {
+  async sendOmerMessage(groupId: string, dayNumber: string, caption: string) {
     if (!this.isConnected) return;
     try {
       const imagePath = join(
@@ -129,9 +109,8 @@ export class WhatsappService implements OnModuleInit {
       } else {
         await this.client.sendMessage(groupId, caption);
       }
-    } catch (error) {
-      this.logger.error(`Omer send error: ${error.message}`);
-      if (error.message.includes('detached Frame')) this.handleRestart();
+    } catch (e) {
+      if (e.message.includes('Frame')) this.handleRestart();
     }
   }
 }
