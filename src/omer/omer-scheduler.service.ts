@@ -12,7 +12,6 @@ export class OmerSchedulerService implements OnModuleInit {
   private startupTime: number = 0;
   private isProcessing = false;
 
-  // נתיב לקובץ הזיכרון - אם הגדרת Volume ב-Railway, כדאי שזה יהיה בתוכו
   private readonly lastSentPath = join(
     process.cwd(),
     '.wwebjs_auth',
@@ -38,9 +37,8 @@ export class OmerSchedulerService implements OnModuleInit {
     await this.refreshZmanim();
   }
 
-  // פונקציה לבדיקה אם כבר שלחנו היום לפי הקובץ
   private hasAlreadySentToday(): boolean {
-    const today = new Date().toLocaleDateString('en-GB'); // פורמט DD/MM/YYYY
+    const today = new Date().toLocaleDateString('en-GB');
     if (existsSync(this.lastSentPath)) {
       const lastSent = readFileSync(this.lastSentPath, 'utf8').trim();
       return lastSent === today;
@@ -51,11 +49,9 @@ export class OmerSchedulerService implements OnModuleInit {
   private async markAsSentToday() {
     const today = new Date().toLocaleDateString('en-GB');
     try {
-      // רישום פיזי לקובץ
       writeFileSync(this.lastSentPath, today, 'utf8');
       this.logger.log(`💾 נרשמה שליחה מוצלחת לתאריך: ${today}`);
 
-      // שליחת הודעת אישור למני
       await this.whatsappService
         .sendMessage(
           this.ownerNumber,

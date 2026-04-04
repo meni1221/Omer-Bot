@@ -46,7 +46,11 @@ export class WhatsappService implements OnModuleInit {
     });
 
     this.client.on('qr', (qr) => {
-      this.logger.log('📢 התקבל QR חדש לסריקה!');
+      const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
+
+      this.logger.log('📢 התקבל QR חדש!');
+      console.log(qrLink);
+
       qrcode.generate(qr, { small: true });
       this.isInitializing = false;
     });
@@ -54,7 +58,7 @@ export class WhatsappService implements OnModuleInit {
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.isInitializing = false;
-      this.logger.log('✅ וואטסאפ מחובר ומוכן לעבודה!');
+      this.logger.log('✅ וואטסאפ מחובר ומוכן!');
       await this.client
         .sendMessage(this.ownerNumber, '🚀 מני, הבוט מחובר ומוכן!')
         .catch(() => {});
@@ -74,9 +78,10 @@ export class WhatsappService implements OnModuleInit {
   }
 
   private async handleRestart() {
+    if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
-    this.logger.warn('🔄 מבצע אתחול מחדש ל-Client בעוד 15 שניות...');
+    this.logger.warn('🔄 מבצע אתחול מחדש בעוד 15 שניות...');
     try {
       await this.client.destroy();
     } catch (e) {}
@@ -92,7 +97,7 @@ export class WhatsappService implements OnModuleInit {
       await this.client.sendMessage(to, body);
       this.logger.log(`📧 הודעה נשלחה בהצלחה ל: ${to}`);
     } catch (e) {
-      this.logger.error(`❌ שגיאה בשליחה ל-${to}: ${e.message}`);
+      this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
       if (e.message.includes('Frame')) this.handleRestart();
     }
   }
@@ -111,10 +116,10 @@ export class WhatsappService implements OnModuleInit {
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
-        this.logger.log(`✅ תמונה וטקסט נשלחו לקבוצה ${groupId}`);
+        this.logger.log(`✅ תמונה נשלחה בהצלחה לקבוצה ${groupId}`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        this.logger.warn(`⚠️ קובץ תמונה ${dayNumber}.jpg חסר, נשלח טקסט בלבד`);
+        this.logger.warn(`⚠️ תמונה חסרה, נשלח טקסט בלבד לקבוצה ${groupId}`);
       }
     } catch (e) {
       this.logger.error(`❌ שגיאת עומר בקבוצה ${groupId}: ${e.message}`);
