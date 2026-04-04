@@ -6,27 +6,27 @@ import { OmerData } from './omer-data.interface';
 export class OmerService {
   private readonly logger = new Logger(OmerService.name);
 
-  // משיכת זמן צאת הכוכבים מ-Hebcal עבור בני ברק
   async getZmanim(): Promise<string | null> {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      // שימוש בפרמטר tzid כדי לוודא שהזמן חוזר בפורמט מקומי של ישראל
-      const url = `https://www.hebcal.com/zmanim?cfg=json&city=IL-Bnei+Brak&date=${today}&tzid=Asia/Jerusalem`;
+      // מעבר לקואורדינטות של בני ברק - זה הכי אמין ב-Hebcal
+      const lat = '32.0840';
+      const lng = '34.8340';
+      const url = `https://www.hebcal.com/zmanim?cfg=json&latitude=${lat}&longitude=${lng}&tzid=Asia/Jerusalem`;
+
       const { data } = await axios.get(url);
 
-      // ב-API של Hebcal עם פרמטר city, הזמנים נמצאים תחת אובייקט times
-      const zman = data?.times?.tzeit7085deg;
+      // בפורמט הזה הזמנים נמצאים תחת data.times
+      // ננסה קודם את tzeit7085deg, ואם לא קיים - ניקח את tzeit85deg (שהוא כמעט זהה)
+      const zman = data?.times?.tzeit7085deg || data?.times?.tzeit85deg;
 
       if (!zman) {
-        this.logger.warn(
-          'Hebcal API returned success but tzeit7085deg is missing',
-        );
+        this.logger.warn('Could not find Tzeit types in Hebcal response');
         return null;
       }
 
       return zman;
     } catch (e) {
-      this.logger.error(`Failed to fetch Zmanim: ${e.message}`);
+      this.logger.error(`Hebcal API Error: ${e.message}`);
       return null;
     }
   }
@@ -37,7 +37,6 @@ export class OmerService {
         'https://www.hebcal.com/hebcal?v=1&cfg=json&o=on',
       );
       const item = data.items?.find((i: any) => i.category === 'omer');
-
       if (!item) return null;
 
       const dayMatch = item.title.match(/\d+/);
