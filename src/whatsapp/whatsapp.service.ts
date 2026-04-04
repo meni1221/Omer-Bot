@@ -9,7 +9,6 @@ export class WhatsappService implements OnModuleInit {
   private client: Client;
   private readonly logger = new Logger(WhatsappService.name);
   private isConnected = false;
-  // המספר שלך בפורמט וואטסאפ
   private readonly ownerNumber = '972533011599@c.us';
 
   constructor() {
@@ -22,16 +21,14 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        // תיקון ה-Timeout - נותן לדפדפן דקה שלמה להגיב
         protocolTimeout: 60000,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--no-zygote', // חוסך בזיכרון בשרתים כמו Railway
-          '--single-process', // מריץ הכל בתהליך אחד - קריטי למניעת תקיעות
-          '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          '--no-zygote',
+          '--single-process',
         ],
       },
     });
@@ -39,35 +36,12 @@ export class WhatsappService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     this.client.on('qr', (qr: string) => {
-      this.logger.log('--- QR CODE READY ---');
-      const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
-      console.log('\x1b[36m%s\x1b[0m', '👉 Open this link to scan:');
-      console.log(qrLink);
       qrcode.generate(qr, { small: true });
     });
 
-    this.client.on('ready', async () => {
+    this.client.on('ready', () => {
       this.isConnected = true;
       this.logger.log('✅ WhatsApp Client is Ready!');
-
-      try {
-        await this.client.sendMessage(
-          this.ownerNumber,
-          '🚀 מני, הבוט רץ ב-Railway ומחובר בהצלחה!',
-        );
-      } catch (e) {
-        this.logger.error('Failed to send startup message to owner');
-      }
-    });
-
-    this.client.on('authenticated', () => {
-      this.logger.log('🔓 Authenticated successfully');
-    });
-
-    // טיפול בשגיאות ניתוק כדי שהבוט לא יקרוס
-    this.client.on('disconnected', (reason) => {
-      this.isConnected = false;
-      this.logger.warn(`WhatsApp was logged out: ${reason}`);
     });
 
     this.client.initialize().catch((err) => {
@@ -76,15 +50,11 @@ export class WhatsappService implements OnModuleInit {
   }
 
   async sendMessage(to: string, body: string): Promise<void> {
-    if (!this.isConnected) {
-      this.logger.warn(`Cannot send message to ${to}: Client not connected`);
-      return;
-    }
+    if (!this.isConnected) return;
     try {
       await this.client.sendMessage(to, body);
-      this.logger.log(`Message sent successfully to ${to}`);
     } catch (error) {
-      this.logger.error(`Error sending message to ${to}: ${error.message}`);
+      this.logger.error(`Error sending message: ${error.message}`);
     }
   }
 
@@ -93,11 +63,7 @@ export class WhatsappService implements OnModuleInit {
     dayNumber: string,
     caption: string,
   ): Promise<void> {
-    if (!this.isConnected) {
-      this.logger.warn('Cannot send: Client not connected');
-      return;
-    }
-
+    if (!this.isConnected) return;
     try {
       const imagePath = join(
         process.cwd(),
@@ -105,24 +71,14 @@ export class WhatsappService implements OnModuleInit {
         'omer',
         `${dayNumber}.jpg`,
       );
-
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        // שליחה עם טיימאאוט מוגדל ספציפית למדיה (תמונות לוקחות יותר זמן)
         await this.client.sendMessage(groupId, media, { caption });
-
-        this.logger.log(`Success: Day ${dayNumber} sent to group.`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        this.logger.warn(`Image for day ${dayNumber} missing, sent text only.`);
       }
     } catch (error) {
       this.logger.error(`Error in sendOmerMessage: ${error.message}`);
-      // הודעת שגיאה אליך רק אם זה באמת נכשל
-      await this.sendMessage(
-        this.ownerNumber,
-        `❌ שגיאה בשליחת הודעת עומר: ${error.message}`,
-      ).catch(() => {});
     }
   }
 }
