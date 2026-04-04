@@ -8,7 +8,7 @@ export class OmerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(OmerSchedulerService.name);
   private targetTime: string | null = null;
   private lastSentDay: number | null = null;
-  private startupTime: number = 0; // זמן עליית השרת במילישניות
+  private startupTime: number = 0;
   private readonly ownerNumber = '972533011599@c.us';
 
   private readonly groups: string[] = [
@@ -25,10 +25,11 @@ export class OmerSchedulerService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     this.logger.log('🚀 Omer Bot Starting Up...');
-    this.startupTime = Date.now(); // מתעד את זמן העלייה
+    this.startupTime = Date.now();
     await this.refreshZmanim();
   }
 
+  // משיכה בכל דקה במהלך היום
   @Cron(CronExpression.EVERY_MINUTE)
   async handleEveryMinute(): Promise<void> {
     const now = new Date();
@@ -42,7 +43,7 @@ export class OmerSchedulerService implements OnModuleInit {
 
     if (!this.targetTime) return;
 
-    // --- לוגיקת הדיווח המזורז (10 דקות ראשונות, כל 2 דקות) ---
+    // דיווח התנעה: ב-10 דקות הראשונות, כל 2 דקות
     const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
     if (minutesSinceStartup <= 10 && now.getMinutes() % 2 === 0) {
       await this.whatsappService.sendMessage(
@@ -51,7 +52,7 @@ export class OmerSchedulerService implements OnModuleInit {
       );
     }
 
-    // שליחה לקבוצות בזמן היעד
+    // בדיקת זמן שליחה
     if (currentTime === this.targetTime && this.lastSentDay !== today) {
       this.logger.log(
         `✨ Time reached (${this.targetTime})! Sending Omer sequence...`,
@@ -61,7 +62,7 @@ export class OmerSchedulerService implements OnModuleInit {
     }
   }
 
-  // דיווח שעתי רגיל (אחרי שחלפו 10 הדקות הראשונות)
+  // דיווח שעתי למני
   @Cron(CronExpression.EVERY_HOUR)
   async sendHourlyStatus(): Promise<void> {
     const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
@@ -81,17 +82,18 @@ export class OmerSchedulerService implements OnModuleInit {
       const zmanIso = await this.omerService.getZmanim();
       if (!zmanIso) return;
 
-      let targetDate = new Date(zmanIso);
-      const dayOfWeek = new Date().getDay();
+      const dateObj = new Date(zmanIso);
+      const dayOfWeek = new Date().getDay(); // 5 = Friday
 
+      // יום שישי: שעה ו-20 דקות לפני (80 דקות)
       if (dayOfWeek === 5) {
-        targetDate = new Date(targetDate.getTime() - 80 * 60 * 1000); // 80 דקות לפני בשישי
+        dateObj.setTime(dateObj.getTime() - 80 * 60 * 1000);
       }
 
-      this.targetTime =
-        targetDate.getHours().toString().padStart(2, '0') +
-        ':' +
-        targetDate.getMinutes().toString().padStart(2, '0');
+      const h = dateObj.getHours().toString().padStart(2, '0');
+      const m = dateObj.getMinutes().toString().padStart(2, '0');
+
+      this.targetTime = `${h}:${m}`;
     } catch (e) {
       this.logger.error(`Error refreshing Zmanim: ${e.message}`);
     }
@@ -100,6 +102,7 @@ export class OmerSchedulerService implements OnModuleInit {
   private async sendDailyUpdate(): Promise<void> {
     const data = await this.omerService.getOmerData();
     if (data && data.day) {
+      // הכיתוב המלא שביקשת
       const caption =
         `*ספירת העומר - הלילה ${data.day} ימים:*\n` +
         `${data.hebrew}\n\n` +
@@ -107,6 +110,7 @@ export class OmerSchedulerService implements OnModuleInit {
         `https://chat.whatsapp.com/I8bONiOPYoi8a7QnYT9p5a?mode=gi_t\n\n` +
         `תזכו למצוות! 🕯️\n\n` +
         `שימו לב שעברנו לעבודה עם רובוט 🤖`;
+
       for (const groupId of this.groups) {
         try {
           await this.whatsappService.sendOmerMessage(
@@ -114,13 +118,15 @@ export class OmerSchedulerService implements OnModuleInit {
             data.day,
             caption,
           );
+          this.logger.log(`Success: Group ${groupId}`);
         } catch (err) {
-          this.logger.error(`Failed to send to group ${groupId}`);
+          this.logger.error(`Failed: Group ${groupId}`);
         }
       }
+
       await this.whatsappService.sendMessage(
         this.ownerNumber,
-        `✅ הודעות העומר נשלחו.`,
+        `✅ מני, הודעות העומר נשלחו בהצלחה.`,
       );
     }
   }
