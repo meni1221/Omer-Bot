@@ -21,12 +21,15 @@ export class WhatsappService implements OnModuleInit {
     this.isInitializing = true;
     this.isConnected = false;
 
-    this.logger.log('🛠️ מתחיל תהליך חיבור לוואטסאפ (גרסה יציבה)...');
+    this.logger.log('🛠️ מתחיל תהליך חיבור (Force Connection Mode)...');
 
     this.client = new Client({
-      authStrategy: new LocalAuth(),
-      authTimeoutMs: 30000,
-      qrMaxRetries: 10,
+      authStrategy: new LocalAuth({
+        clientId: 'omer-bot-session',
+        dataPath: './.wwebjs_auth',
+      }),
+      authTimeoutMs: 90000,
+      qrMaxRetries: 15,
       webVersionCache: {
         type: 'remote',
         remotePath:
@@ -42,6 +45,7 @@ export class WhatsappService implements OnModuleInit {
           '--no-zygote',
           '--single-process',
           '--disable-renderer-backgrounding',
+          '--disable-extensions',
         ],
       },
     });
@@ -57,25 +61,23 @@ export class WhatsappService implements OnModuleInit {
     });
 
     this.client.on('authenticated', () => {
-      this.logger.log('🔓 האימות הצליח! מתחבר סופית...');
+      this.logger.log('🔓 האימות (Authenticated) עבר בהצלחה! ממתין ל-Ready...');
     });
 
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.isInitializing = false;
-      this.logger.log('✅ וואטסאפ מחובר ומוכן לעבודה!');
+      this.logger.log('✅✅✅ וואטסאפ READY! הבוט מחובר סופית.');
 
-      // הודעת אישור למני
       await this.client
-        .sendMessage(
-          this.ownerNumber,
-          '🚀 מני, הבוט התחבר בהצלחה וממתין לפקודות!',
-        )
-        .catch(() => {});
+        .sendMessage(this.ownerNumber, '🚀 מני, אני חי, מחובר ומוכן לספירה!')
+        .catch((err) => {
+          this.logger.error(`❌ שגיאה בשליחת הודעת Ready: ${err.message}`);
+        });
     });
 
     this.client.on('auth_failure', (msg) => {
-      this.logger.error(`❌ כשל באימות: ${msg}`);
+      this.logger.error(`❌ כשל באימות (Auth Failure): ${msg}`);
       this.handleRestart();
     });
 
@@ -96,16 +98,18 @@ export class WhatsappService implements OnModuleInit {
     if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
-    this.logger.warn('🔄 מבצע אתחול מחדש בעוד 20 שניות...');
+    this.logger.warn('🔄 מבצע אתחול מחדש בעוד 30 שניות...');
     try {
       await this.client.destroy();
     } catch (e) {}
-    setTimeout(() => this.initializeClient(), 20000);
+    setTimeout(() => this.initializeClient(), 30000);
   }
 
   async sendMessage(to: string, body: string) {
     if (!this.isConnected) {
-      this.logger.warn(`⚠️ ניסיון שליחה ל-${to} בוטל: אין חיבור פעיל`);
+      this.logger.warn(
+        `⚠️ ניסיון שליחה ל-${to} נחסם: הבוט עדיין לא בסטטוס READY`,
+      );
       return;
     }
     try {
@@ -113,7 +117,9 @@ export class WhatsappService implements OnModuleInit {
       this.logger.log(`📧 הודעה נשלחה בהצלחה ל: ${to}`);
     } catch (e) {
       this.logger.error(`❌ שגיאה בשליחת הודעה: ${e.message}`);
-      if (e.message.includes('Frame')) this.handleRestart();
+      if (e.message.includes('Frame') || e.message.includes('detached')) {
+        this.handleRestart();
+      }
     }
   }
 
