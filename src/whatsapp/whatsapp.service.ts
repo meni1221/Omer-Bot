@@ -111,6 +111,9 @@ export class WhatsappService implements OnModuleInit {
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
+
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+
         await this.client.sendMessage(this.ownerNumber, media, { caption });
       } else {
         await this.client.sendMessage(
@@ -134,6 +137,9 @@ export class WhatsappService implements OnModuleInit {
       );
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
+
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+
         await this.client.sendMessage(groupId, media, { caption });
         // עדכון אליך שהשליחה לקבוצה בוצעה
         await this.client.sendMessage(
