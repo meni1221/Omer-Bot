@@ -24,27 +24,24 @@ export class WhatsappService implements OnModuleInit {
 
     this.client = new Client({
       authStrategy: new LocalAuth({
-        clientId: 'omer-bot-session',
-        dataPath: './.wwebjs_auth',
+        clientId: 'omer-bot-v3', // שינוי שם כדי ליצור תיקייה חדשה ונקייה
+        dataPath: './.wwebjs_auth' 
       }),
-      authTimeoutMs: 90000,
-      qrMaxRetries: 20,
+      authTimeoutMs: 0, // 0 אומר "חכה לנצח" - מונע קריסה אם השרת איטי
+      qrMaxRetries: 30,
       takeoverOnConflict: true,
       puppeteer: {
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // חשוב מאוד ב-Railway!
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process', // חוסך המון זיכרון ב-Linux
+          '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--disable-software-rasterizer',
+          '--no-zygote',
+          '--single-process', // קריטי לחיסכון בזיכרון
           '--disable-extensions',
-          '--memory-pressure-off', // מונע מהכרום להילחץ מחוסר זיכרון
           '--blink-settings=imagesEnabled=false',
+          '--unlimited-storage', // נותן לדפדפן "לנשום" עם ה-Cache
         ],
       },
     });
