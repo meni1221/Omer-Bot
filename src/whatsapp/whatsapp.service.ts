@@ -21,7 +21,7 @@ export class WhatsappService implements OnModuleInit {
     this.isInitializing = true;
     this.isConnected = false;
 
-    this.logger.log('🛠️ מתחיל תהליך חיבור (Force Connection Mode)...');
+    this.logger.log('🛠️ ניסיון חיבור אגרסיבי (Optimized for Railway)...');
 
     this.client = new Client({
       authStrategy: new LocalAuth({
@@ -29,12 +29,8 @@ export class WhatsappService implements OnModuleInit {
         dataPath: './.wwebjs_auth',
       }),
       authTimeoutMs: 90000,
-      qrMaxRetries: 15,
-      webVersionCache: {
-        type: 'remote',
-        remotePath:
-          'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-      },
+      qrMaxRetries: 20,
+      takeoverOnConflict: true,
       puppeteer: {
         headless: true,
         args: [
@@ -45,51 +41,48 @@ export class WhatsappService implements OnModuleInit {
           '--no-zygote',
           '--single-process',
           '--disable-renderer-backgrounding',
+          '--disable-canvas-aa',
+          '--disable-2d-canvas-clip-utils',
+          '--disable-gl-drawing-for-tests',
           '--disable-extensions',
+          '--blink-settings=imagesEnabled=false',
         ],
       },
     });
 
     this.client.on('qr', (qr) => {
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
-
-      this.logger.log('📢 הופק QR חדש לסריקה!');
+      this.logger.log('📢 QR חדש לסריקה!');
       console.log(qrLink);
-
-      qrcode.generate(qr, { small: true });
       this.isInitializing = false;
     });
 
     this.client.on('authenticated', () => {
-      this.logger.log('🔓 האימות (Authenticated) עבר בהצלחה! ממתין ל-Ready...');
+      this.logger.log('🔓 אימות בוצע בטלפון! מבצע סנכרון סופי...');
     });
 
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.isInitializing = false;
-      this.logger.log('✅✅✅ וואטסאפ READY! הבוט מחובר סופית.');
+      this.logger.log('✅✅✅ READY! הבוט מחובר ופעיל.');
 
       await this.client
-        .sendMessage(this.ownerNumber, '🚀 מני, אני חי, מחובר ומוכן לספירה!')
-        .catch((err) => {
-          this.logger.error(`❌ שגיאה בשליחת הודעת Ready: ${err.message}`);
-        });
+        .sendMessage(
+          this.ownerNumber,
+          '🚀 מני, התחברתי בהצלחה! הבוט מוכן לספירה.',
+        )
+        .catch(() => {});
     });
 
     this.client.on('auth_failure', (msg) => {
-      this.logger.error(`❌ כשל באימות (Auth Failure): ${msg}`);
-      this.handleRestart();
-    });
-
-    this.client.on('disconnected', (reason) => {
-      this.logger.warn(`❌ וואטסאפ התנתק: ${reason}`);
+      this.logger.error(`❌ כשל באימות: ${msg}`);
       this.handleRestart();
     });
 
     try {
       await this.client.initialize();
     } catch (err) {
-      this.logger.error(`❌ שגיאה קריטית באתחול: ${err.message}`);
+      this.logger.error(`❌ שגיאה באתחול: ${err.message}`);
       this.handleRestart();
     }
   }
@@ -98,28 +91,24 @@ export class WhatsappService implements OnModuleInit {
     if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
-    this.logger.warn('🔄 מבצע אתחול מחדש בעוד 30 שניות...');
+    this.logger.warn('🔄 אתחול מחדש בעוד 20 שניות...');
     try {
       await this.client.destroy();
     } catch (e) {}
-    setTimeout(() => this.initializeClient(), 30000);
+    setTimeout(() => this.initializeClient(), 20000);
   }
 
   async sendMessage(to: string, body: string) {
     if (!this.isConnected) {
-      this.logger.warn(
-        `⚠️ ניסיון שליחה ל-${to} נחסם: הבוט עדיין לא בסטטוס READY`,
-      );
+      this.logger.warn(`⚠️ שליחה ל-${to} נכשלה: בוט לא READY`);
       return;
     }
     try {
       await this.client.sendMessage(to, body);
-      this.logger.log(`📧 הודעה נשלחה בהצלחה ל: ${to}`);
+      this.logger.log(`📧 נשלח ל: ${to}`);
     } catch (e) {
-      this.logger.error(`❌ שגיאה בשליחת הודעה: ${e.message}`);
-      if (e.message.includes('Frame') || e.message.includes('detached')) {
-        this.handleRestart();
-      }
+      this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
+      if (e.message.includes('Frame')) this.handleRestart();
     }
   }
 
@@ -132,18 +121,14 @@ export class WhatsappService implements OnModuleInit {
         'omer',
         `${dayNumber}.jpg`,
       );
-
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
-        this.logger.log(`✅ תמונת יום ${dayNumber} נשלחה לקבוצה ${groupId}`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        this.logger.warn(`⚠️ תמונה חסרה (יום ${dayNumber}), נשלח טקסט בלבד.`);
       }
     } catch (e) {
-      this.logger.error(`❌ שגיאה בשליחת הודעת עומר: ${e.message}`);
-      if (e.message.includes('Frame')) this.handleRestart();
+      this.logger.error(`❌ שגיאה בעומר: ${e.message}`);
     }
   }
 }
