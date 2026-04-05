@@ -21,10 +21,12 @@ export class WhatsappService implements OnModuleInit {
     this.isInitializing = true;
     this.isConnected = false;
 
-    this.logger.log('🛠️ מתחיל תהליך חיבור לוואטסאפ...');
+    this.logger.log('🛠️ מתחיל תהליך חיבור לוואטסאפ (גרסה יציבה)...');
 
     this.client = new Client({
       authStrategy: new LocalAuth(),
+      authTimeoutMs: 30000,
+      qrMaxRetries: 10,
       webVersionCache: {
         type: 'remote',
         remotePath:
@@ -32,7 +34,6 @@ export class WhatsappService implements OnModuleInit {
       },
       puppeteer: {
         headless: true,
-        protocolTimeout: 0,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -48,20 +49,34 @@ export class WhatsappService implements OnModuleInit {
     this.client.on('qr', (qr) => {
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
 
-      this.logger.log('📢 התקבל QR חדש!');
+      this.logger.log('📢 הופק QR חדש לסריקה!');
       console.log(qrLink);
 
       qrcode.generate(qr, { small: true });
       this.isInitializing = false;
     });
 
+    this.client.on('authenticated', () => {
+      this.logger.log('🔓 האימות הצליח! מתחבר סופית...');
+    });
+
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.isInitializing = false;
-      this.logger.log('✅ וואטסאפ מחובר ומוכן!');
+      this.logger.log('✅ וואטסאפ מחובר ומוכן לעבודה!');
+
+      // הודעת אישור למני
       await this.client
-        .sendMessage(this.ownerNumber, '🚀 מני, הבוט מחובר ומוכן!')
+        .sendMessage(
+          this.ownerNumber,
+          '🚀 מני, הבוט התחבר בהצלחה וממתין לפקודות!',
+        )
         .catch(() => {});
+    });
+
+    this.client.on('auth_failure', (msg) => {
+      this.logger.error(`❌ כשל באימות: ${msg}`);
+      this.handleRestart();
     });
 
     this.client.on('disconnected', (reason) => {
@@ -72,7 +87,7 @@ export class WhatsappService implements OnModuleInit {
     try {
       await this.client.initialize();
     } catch (err) {
-      this.logger.error(`❌ שגיאה באתחול: ${err.message}`);
+      this.logger.error(`❌ שגיאה קריטית באתחול: ${err.message}`);
       this.handleRestart();
     }
   }
@@ -81,23 +96,23 @@ export class WhatsappService implements OnModuleInit {
     if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
-    this.logger.warn('🔄 מבצע אתחול מחדש בעוד 15 שניות...');
+    this.logger.warn('🔄 מבצע אתחול מחדש בעוד 20 שניות...');
     try {
       await this.client.destroy();
     } catch (e) {}
-    setTimeout(() => this.initializeClient(), 15000);
+    setTimeout(() => this.initializeClient(), 20000);
   }
 
   async sendMessage(to: string, body: string) {
     if (!this.isConnected) {
-      this.logger.warn(`⚠️ ניסיון שליחה ל-${to} נכשל: אין חיבור`);
+      this.logger.warn(`⚠️ ניסיון שליחה ל-${to} בוטל: אין חיבור פעיל`);
       return;
     }
     try {
       await this.client.sendMessage(to, body);
       this.logger.log(`📧 הודעה נשלחה בהצלחה ל: ${to}`);
     } catch (e) {
-      this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
+      this.logger.error(`❌ שגיאה בשליחת הודעה: ${e.message}`);
       if (e.message.includes('Frame')) this.handleRestart();
     }
   }
@@ -111,18 +126,17 @@ export class WhatsappService implements OnModuleInit {
         'omer',
         `${dayNumber}.jpg`,
       );
-      this.logger.log(`📸 מנסה לשלוח יום ${dayNumber} לקבוצה ${groupId}...`);
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
-        this.logger.log(`✅ תמונה נשלחה בהצלחה לקבוצה ${groupId}`);
+        this.logger.log(`✅ תמונת יום ${dayNumber} נשלחה לקבוצה ${groupId}`);
       } else {
         await this.client.sendMessage(groupId, caption);
-        this.logger.warn(`⚠️ תמונה חסרה, נשלח טקסט בלבד לקבוצה ${groupId}`);
+        this.logger.warn(`⚠️ תמונה חסרה (יום ${dayNumber}), נשלח טקסט בלבד.`);
       }
     } catch (e) {
-      this.logger.error(`❌ שגיאת עומר בקבוצה ${groupId}: ${e.message}`);
+      this.logger.error(`❌ שגיאה בשליחת הודעת עומר: ${e.message}`);
       if (e.message.includes('Frame')) this.handleRestart();
     }
   }
