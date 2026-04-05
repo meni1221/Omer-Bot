@@ -92,15 +92,21 @@ export class WhatsappService implements OnModuleInit {
   // פונקציית בדיקה ששולחת אליך את ההודעה המלאה (טקסט + תמונה מהתיקייה)
   private async sendTestToMeni(statusTitle: string) {
     try {
-      // תאריך ליל הסדר 2026: 1 באפריל בערב
-      // הספירה התחילה ב-2 באפריל בערב
-      const omerStart = new Date('2026-04-02T18:00:00');
+      // תאריך תחילת הספירה (היום הראשון - 2 באפריל 2026)
+      const startDate = new Date('2026-04-02');
       const now = new Date();
 
-      // חישוב ההפרש בימים מרגע תחילת הספירה
-      const diffInMs = now.getTime() - omerStart.getTime();
-      // חלוקה במילישניות ליממה + הוספת 1 כי ב-2 באפריל בערב זה יום 1
-      const dayForTonight = Math.floor(diffInMs / (1000 * 60 * 60 * 24)) + 1;
+      // איפוס שעות כדי לחשב רק הפרש ימים נקי
+      const start = Date.UTC(
+        startDate.getFullYear(),
+        startDate.getMonth(),
+        startDate.getDate(),
+      );
+      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+
+      // חישוב הימים שעברו + 1 (כי ב-2 באפריל זה יום 1)
+      const dayForTonight =
+        Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
 
       const zmanRaw = await this.omerService.getZmanim();
       const currentTime = now.toLocaleTimeString('he-IL', {
@@ -114,7 +120,6 @@ export class WhatsappService implements OnModuleInit {
           })
         : '19:28';
 
-      // בדיקה איזה קובץ למשוך (למשל 5.jpg אם היום הוא היום ה-5)
       const imagePath = join(
         process.cwd(),
         'assets',
@@ -125,7 +130,6 @@ export class WhatsappService implements OnModuleInit {
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        // השהייה למניעת קריסת ה-Puppeteer ב-Railway
         await new Promise((resolve) => setTimeout(resolve, 2500));
         await this.client.sendMessage(this.ownerNumber, media, { caption });
       } else {
