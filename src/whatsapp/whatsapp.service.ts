@@ -92,10 +92,18 @@ export class WhatsappService implements OnModuleInit {
   // פונקציית בדיקה ששולחת אליך את ההודעה המלאה (טקסט + תמונה מהתיקייה)
   private async sendTestToMeni(statusTitle: string) {
     try {
-      const omer = await this.omerService.getOmerData();
+      // תאריך ליל הסדר 2026: 1 באפריל בערב
+      // הספירה התחילה ב-2 באפריל בערב
+      const omerStart = new Date('2026-04-02T18:00:00');
+      const now = new Date();
+
+      // חישוב ההפרש בימים מרגע תחילת הספירה
+      const diffInMs = now.getTime() - omerStart.getTime();
+      // חלוקה במילישניות ליממה + הוספת 1 כי ב-2 באפריל בערב זה יום 1
+      const dayForTonight = Math.floor(diffInMs / (1000 * 60 * 60 * 24)) + 1;
+
       const zmanRaw = await this.omerService.getZmanim();
-      const day = omer?.day || '1';
-      const currentTime = new Date().toLocaleTimeString('he-IL', {
+      const currentTime = now.toLocaleTimeString('he-IL', {
         hour: '2-digit',
         minute: '2-digit',
       });
@@ -104,21 +112,26 @@ export class WhatsappService implements OnModuleInit {
             hour: '2-digit',
             minute: '2-digit',
           })
-        : '19:27';
+        : '19:28';
 
-      const imagePath = join(process.cwd(), 'assets', 'omer', `${day}.jpg`);
-      const caption = `${statusTitle}\nשעה: *${currentTime}*\nזמן יעד להיום: *${targetTime}*`;
+      // בדיקה איזה קובץ למשוך (למשל 5.jpg אם היום הוא היום ה-5)
+      const imagePath = join(
+        process.cwd(),
+        'assets',
+        'omer',
+        `${dayForTonight}.jpg`,
+      );
+      const caption = `${statusTitle}\n📅 בדיקה לערב יום: *${dayForTonight}* בעומר\n⏰ שעה: *${currentTime}*\n⏳ יעד שליחה: *${targetTime}*`;
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-
+        // השהייה למניעת קריסת ה-Puppeteer ב-Railway
         await new Promise((resolve) => setTimeout(resolve, 2500));
-
         await this.client.sendMessage(this.ownerNumber, media, { caption });
       } else {
         await this.client.sendMessage(
           this.ownerNumber,
-          `${caption}\n⚠️ *תמונה לא נמצאה בנתיב:* ${imagePath}`,
+          `${caption}\n⚠️ *תמונה ${dayForTonight}.jpg לא נמצאה בתיקייה!*`,
         );
       }
     } catch (e) {
