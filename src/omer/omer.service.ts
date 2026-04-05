@@ -7,7 +7,6 @@ export class OmerService {
 
   async getZmanim(): Promise<string | null> {
     try {
-      // קואורדינטות בני ברק
       const url = `https://www.hebcal.com/zmanim?cfg=json&latitude=32.0840&longitude=34.8340&tzid=Asia/Jerusalem`;
       const { data } = await axios.get(url, { timeout: 10000 });
 
