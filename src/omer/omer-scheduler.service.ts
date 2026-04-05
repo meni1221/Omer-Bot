@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OmerService } from './omer.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { GROUPS } from 'src/constants/groups';
 
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
@@ -12,12 +13,7 @@ export class OmerSchedulerService implements OnModuleInit {
   private isProcessing = false;
   private readonly ownerNumber = '972533011599@c.us';
 
-  private readonly groups: string[] = [
-    '120363301374326202@g.us',
-    '120363267001121815@g.us',
-    '120363120170653605@g.us',
-    '120363426577586940@g.us',
-  ];
+  private readonly groups: string[] = GROUPS;
 
   constructor(
     private readonly omerService: OmerService,
