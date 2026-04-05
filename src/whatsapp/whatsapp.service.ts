@@ -2,6 +2,8 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { OmerService } from 'src/omer/omer.service';
 
 @Injectable()
 export class WhatsappService implements OnModuleInit {
@@ -10,6 +12,8 @@ export class WhatsappService implements OnModuleInit {
   private isConnected = false;
   private isInitializing = false;
   private readonly ownerNumber = '972533011599@c.us';
+
+  constructor(private readonly omerService: OmerService) {}
 
   async onModuleInit() {
     await this.initializeClient();
@@ -24,10 +28,10 @@ export class WhatsappService implements OnModuleInit {
 
     this.client = new Client({
       authStrategy: new LocalAuth({
-        clientId: 'omer-bot-v3', // שינוי שם כדי ליצור תיקייה חדשה ונקייה
-        dataPath: './.wwebjs_auth' 
+        clientId: 'omer-bot-v3',
+        dataPath: './.wwebjs_auth',
       }),
-      authTimeoutMs: 0, // 0 אומר "חכה לנצח" - מונע קריסה אם השרת איטי
+      authTimeoutMs: 0,
       qrMaxRetries: 30,
       takeoverOnConflict: true,
       puppeteer: {
@@ -38,10 +42,10 @@ export class WhatsappService implements OnModuleInit {
           '--disable-dev-shm-usage',
           '--disable-gpu',
           '--no-zygote',
-          '--single-process', // קריטי לחיסכון בזיכרון
+          '--single-process',
           '--disable-extensions',
           '--blink-settings=imagesEnabled=false',
-          '--unlimited-storage', // נותן לדפדפן "לנשום" עם ה-Cache
+          '--unlimited-storage',
         ],
       },
     });
@@ -49,7 +53,7 @@ export class WhatsappService implements OnModuleInit {
     this.client.on('qr', (qr) => {
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
       this.logger.log('📢 QR חדש לסריקה!');
-      console.log(qrLink);
+      console.log(qrLink); // הקישור המקורי שלך
       this.isInitializing = false;
     });
 
@@ -62,17 +66,8 @@ export class WhatsappService implements OnModuleInit {
       this.isInitializing = false;
       this.logger.log('✅✅✅ READY! הבוט מחובר ופעיל.');
 
-      await this.client
-        .sendMessage(
-          this.ownerNumber,
-          '🚀 מני, התחברתי בהצלחה! הבוט מוכן לספירה.',
-        )
-        .catch(() => {});
-    });
-
-    this.client.on('auth_failure', (msg) => {
-      this.logger.error(`❌ כשל באימות: ${msg}`);
-      this.handleRestart();
+      // שליחת הודעת בדיקה מלאה (טקסט + תמונה) ישר בעלייה
+      await this.sendTestToMeni('🚀 *מני, התחברתי בהצלחה!* הנה בדיקת הרצה:');
     });
 
     try {
@@ -83,28 +78,45 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  private async handleRestart() {
-    if (this.isInitializing) return;
-    this.isConnected = false;
-    this.isInitializing = false;
-    this.logger.warn('🔄 אתחול מחדש בעוד 20 שניות...');
-    try {
-      await this.client.destroy();
-    } catch (e) {}
-    setTimeout(() => this.initializeClient(), 20000);
+  // סימן חיים שעתי הכולל את התמונה של אותו יום
+  @Cron(CronExpression.EVERY_HOUR)
+  async hourlyCheck() {
+    if (this.isConnected) {
+      await this.sendTestToMeni('🟢 *סימן חיים שעתי:* הבוט פעיל.');
+    }
   }
 
-  async sendMessage(to: string, body: string) {
-    if (!this.isConnected) {
-      this.logger.warn(`⚠️ שליחה ל-${to} נכשלה: בוט לא READY`);
-      return;
-    }
+  // פונקציית בדיקה ששולחת אליך את ההודעה המלאה (טקסט + תמונה מהתיקייה)
+  private async sendTestToMeni(statusTitle: string) {
     try {
-      await this.client.sendMessage(to, body);
-      this.logger.log(`📧 נשלח ל: ${to}`);
+      const omer = await this.omerService.getOmerData();
+      const zmanRaw = await this.omerService.getZmanim();
+      const day = omer?.day || '1';
+      const currentTime = new Date().toLocaleTimeString('he-IL', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const targetTime = zmanRaw
+        ? new Date(zmanRaw).toLocaleTimeString('he-IL', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '19:27';
+
+      const imagePath = join(process.cwd(), 'assets', 'omer', `${day}.jpg`);
+      const caption = `${statusTitle}\nשעה: *${currentTime}*\nזמן יעד להיום: *${targetTime}*`;
+
+      if (existsSync(imagePath)) {
+        const media = MessageMedia.fromFilePath(imagePath);
+        await this.client.sendMessage(this.ownerNumber, media, { caption });
+      } else {
+        await this.client.sendMessage(
+          this.ownerNumber,
+          `${caption}\n⚠️ *תמונה לא נמצאה בנתיב:* ${imagePath}`,
+        );
+      }
     } catch (e) {
-      this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
-      if (e.message.includes('Frame')) this.handleRestart();
+      this.logger.error('Test send failed: ' + e.message);
     }
   }
 
@@ -120,11 +132,45 @@ export class WhatsappService implements OnModuleInit {
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
         await this.client.sendMessage(groupId, media, { caption });
+        // עדכון אליך שהשליחה לקבוצה בוצעה
+        await this.client.sendMessage(
+          this.ownerNumber,
+          `✅ הודעת יום ${dayNumber} הופצה בהצלחה לכל הקבוצות.`,
+        );
       } else {
         await this.client.sendMessage(groupId, caption);
+        await this.client.sendMessage(
+          this.ownerNumber,
+          `⚠️ נשלח טקסט בלבד לקבוצות (תמונה חסרה).`,
+        );
       }
     } catch (e) {
       this.logger.error(`❌ שגיאה בעומר: ${e.message}`);
+      await this.client.sendMessage(
+        this.ownerNumber,
+        `❌ תקלה בשליחה: ${e.message}`,
+      );
+    }
+  }
+
+  private async handleRestart() {
+    if (this.isInitializing) return;
+    this.isConnected = false;
+    this.isInitializing = false;
+    this.logger.warn('🔄 אתחול מחדש בעוד 20 שניות...');
+    try {
+      await this.client.destroy();
+    } catch (e) {}
+    setTimeout(() => this.initializeClient(), 20000);
+  }
+
+  async sendMessage(to: string, body: string) {
+    if (this.isConnected) {
+      try {
+        await this.client.sendMessage(to, body);
+      } catch (e) {
+        this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
+      }
     }
   }
 }
