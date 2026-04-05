@@ -56,7 +56,7 @@ export class WhatsappService implements OnModuleInit {
     this.client.on('qr', (qr) => {
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
       this.logger.log('📢 QR חדש לסריקה!');
-      console.log(qrLink); // הקישור המקורי שלך
+      console.log(qrLink);
       this.isInitializing = false;
     });
 
@@ -68,8 +68,6 @@ export class WhatsappService implements OnModuleInit {
       this.isConnected = true;
       this.isInitializing = false;
       this.logger.log('✅✅✅ READY! הבוט מחובר ופעיל.');
-
-      // שליחת הודעת בדיקה מלאה (טקסט + תמונה) ישר בעלייה
       await this.sendTestToMeni('🚀 *מני, התחברתי בהצלחה!* הנה בדיקת הרצה:');
     });
 
@@ -81,7 +79,6 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  // סימן חיים שעתי הכולל את התמונה של אותו יום
   @Cron(CronExpression.EVERY_HOUR)
   async hourlyCheck() {
     if (this.isConnected) {
@@ -89,26 +86,24 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  // פונקציית בדיקה ששולחת אליך את ההודעה המלאה (טקסט + תמונה מהתיקייה)
+  // פונקציית עזר לחישוב היום בעומר (משותפת לכל הבוט)
+  private getCalculatedOmerDay(): number {
+    const startDate = new Date('2026-04-02');
+    const now = new Date();
+    const start = Date.UTC(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      startDate.getDate(),
+    );
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
+  }
+
   private async sendTestToMeni(statusTitle: string) {
     try {
-      // תאריך תחילת הספירה (היום הראשון - 2 באפריל 2026)
-      const startDate = new Date('2026-04-02');
-      const now = new Date();
-
-      // איפוס שעות כדי לחשב רק הפרש ימים נקי
-      const start = Date.UTC(
-        startDate.getFullYear(),
-        startDate.getMonth(),
-        startDate.getDate(),
-      );
-      const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-
-      // חישוב הימים שעברו + 1 (כי ב-2 באפריל זה יום 1)
-      const dayForTonight =
-        Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
-
+      const dayForTonight = this.getCalculatedOmerDay();
       const zmanRaw = await this.omerService.getZmanim();
+      const now = new Date();
       const currentTime = now.toLocaleTimeString('he-IL', {
         hour: '2-digit',
         minute: '2-digit',
@@ -135,7 +130,7 @@ export class WhatsappService implements OnModuleInit {
       } else {
         await this.client.sendMessage(
           this.ownerNumber,
-          `${caption}\n⚠️ *תמונה ${dayForTonight}.jpg לא נמצאה בתיקייה!*`,
+          `${caption}\n⚠️ *תמונה ${dayForTonight}.jpg לא נמצאה!*`,
         );
       }
     } catch (e) {
@@ -143,9 +138,17 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  async sendOmerMessage(groupId: string, dayNumber: string, caption: string) {
+  // השליחה האמיתית - עכשיו משתמשת בחישוב העצמאי
+  async sendOmerMessage(
+    groupId: string,
+    dayNumberFromApi: string,
+    caption: string,
+  ) {
     if (!this.isConnected) return;
     try {
+      // דריסה של המספר מה-API בחישוב המדויק שלנו
+      const dayNumber = this.getCalculatedOmerDay().toString();
+
       const imagePath = join(
         process.cwd(),
         'assets',
@@ -154,11 +157,9 @@ export class WhatsappService implements OnModuleInit {
       );
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-
         await new Promise((resolve) => setTimeout(resolve, 2500));
-
         await this.client.sendMessage(groupId, media, { caption });
-        // עדכון אליך שהשליחה לקבוצה בוצעה
+
         await this.client.sendMessage(
           this.ownerNumber,
           `✅ הודעת יום ${dayNumber} הופצה בהצלחה לכל הקבוצות.`,
@@ -167,7 +168,7 @@ export class WhatsappService implements OnModuleInit {
         await this.client.sendMessage(groupId, caption);
         await this.client.sendMessage(
           this.ownerNumber,
-          `⚠️ נשלח טקסט בלבד לקבוצות (תמונה חסרה).`,
+          `⚠️ נשלח טקסט בלבד (תמונה ${dayNumber}.jpg חסרה).`,
         );
       }
     } catch (e) {
