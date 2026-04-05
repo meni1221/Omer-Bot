@@ -44,8 +44,11 @@ export class WhatsappService implements OnModuleInit {
           '--no-zygote',
           '--single-process',
           '--disable-extensions',
-          '--blink-settings=imagesEnabled=false',
-          '--unlimited-storage',
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-infobars',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
         ],
       },
     });
