@@ -1,6 +1,5 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
-import * as qrcode from 'qrcode-terminal';
 import { join } from 'path';
 import { existsSync } from 'fs';
 
@@ -36,15 +35,15 @@ export class WhatsappService implements OnModuleInit {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
+          '--disable-dev-shm-usage', // חשוב מאוד ב-Railway!
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
           '--no-zygote',
-          '--single-process',
-          '--disable-renderer-backgrounding',
-          '--disable-canvas-aa',
-          '--disable-2d-canvas-clip-utils',
-          '--disable-gl-drawing-for-tests',
+          '--single-process', // חוסך המון זיכרון ב-Linux
+          '--disable-gpu',
+          '--disable-software-rasterizer',
           '--disable-extensions',
+          '--memory-pressure-off', // מונע מהכרום להילחץ מחוסר זיכרון
           '--blink-settings=imagesEnabled=false',
         ],
       },
