@@ -79,14 +79,29 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_HOUR, {
+    name: 'hourlyCheck',
+    timeZone: 'Asia/Jerusalem',
+  })
   async hourlyCheck() {
-    if (this.isConnected) {
+    // בדיקה אם הבוט באמת מחובר ואקטיבי
+    if (!this.isConnected || !this.client) {
+      this.logger.warn('⚠️ בוט לא מחובר בבדיקה השעתית. מנסה לאתחל...');
+      this.handleRestart();
+      return;
+    }
+
+    try {
+      this.logger.log('⏰ מפעיל בדיקת סימן חיים שעתי (ישראל)...');
       await this.sendTestToMeni('🟢 *סימן חיים שעתי:* הבוט פעיל.');
+    } catch (e) {
+      this.logger.error('❌ קריסה בסימן חיים: ' + e.message);
+      if (e.message.includes('detached') || e.message.includes('closed')) {
+        this.handleRestart();
+      }
     }
   }
 
-  // פונקציית עזר לחישוב היום בעומר (משותפת לכל הבוט)
   private getCalculatedOmerDay(): number {
     const startDate = new Date('2026-04-02');
     const now = new Date();
@@ -101,6 +116,11 @@ export class WhatsappService implements OnModuleInit {
 
   private async sendTestToMeni(statusTitle: string) {
     try {
+      // בדיקה שהדפדפן לא קרס לפני שליחת מדיה
+      if (!this.client?.pupPage || this.client.pupPage.isClosed()) {
+        throw new Error('Puppeteer page is closed or detached');
+      }
+
       const dayForTonight = this.getCalculatedOmerDay();
       const zmanRaw = await this.omerService.getZmanim();
       const now = new Date();
@@ -125,7 +145,8 @@ export class WhatsappService implements OnModuleInit {
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        // השהייה מוגדלת למניעת קריסת פריים ב-Railway
+        await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(this.ownerNumber, media, { caption });
       } else {
         await this.client.sendMessage(
@@ -135,10 +156,12 @@ export class WhatsappService implements OnModuleInit {
       }
     } catch (e) {
       this.logger.error('Test send failed: ' + e.message);
+      if (e.message.includes('detached') || e.message.includes('closed')) {
+        this.handleRestart();
+      }
     }
   }
 
-  // השליחה האמיתית - עכשיו משתמשת בחישוב העצמאי
   async sendOmerMessage(
     groupId: string,
     dayNumberFromApi: string,
@@ -146,18 +169,17 @@ export class WhatsappService implements OnModuleInit {
   ) {
     if (!this.isConnected) return;
     try {
-      // דריסה של המספר מה-API בחישוב המדויק שלנו
       const dayNumber = this.getCalculatedOmerDay().toString();
-
       const imagePath = join(
         process.cwd(),
         'assets',
         'omer',
         `${dayNumber}.jpg`,
       );
+
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(groupId, media, { caption });
 
         await this.client.sendMessage(
@@ -177,6 +199,9 @@ export class WhatsappService implements OnModuleInit {
         this.ownerNumber,
         `❌ תקלה בשליחה: ${e.message}`,
       );
+      if (e.message.includes('detached') || e.message.includes('closed')) {
+        this.handleRestart();
+      }
     }
   }
 
@@ -184,7 +209,9 @@ export class WhatsappService implements OnModuleInit {
     if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
-    this.logger.warn('🔄 אתחול מחדש בעוד 20 שניות...');
+    this.logger.warn(
+      '🔄 זיהיתי ניתוק פריים או קריסה. אתחול מחדש בעוד 20 שניות...',
+    );
     try {
       await this.client.destroy();
     } catch (e) {}
@@ -197,6 +224,7 @@ export class WhatsappService implements OnModuleInit {
         await this.client.sendMessage(to, body);
       } catch (e) {
         this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
+        if (e.message.includes('detached')) this.handleRestart();
       }
     }
   }
