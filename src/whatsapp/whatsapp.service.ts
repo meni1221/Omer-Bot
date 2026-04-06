@@ -49,6 +49,7 @@ export class WhatsappService implements OnModuleInit {
           '--disable-infobars',
           '--disable-web-security',
           '--disable-features=IsolateOrigins,site-per-process',
+          '--maximum-memory=512MB', // הגבלת זיכרון לדפדפן עצמו
         ],
       },
     });
