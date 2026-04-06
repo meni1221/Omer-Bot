@@ -42,7 +42,7 @@ export class WhatsappService implements OnModuleInit {
           '--disable-dev-shm-usage',
           '--disable-gpu',
           '--no-zygote',
-          '--single-process',
+          // '--single-process',
           '--disable-extensions',
           '--no-first-run',
           '--no-default-browser-check',
