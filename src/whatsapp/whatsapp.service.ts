@@ -117,24 +117,28 @@ export class WhatsappService implements OnModuleInit {
 
   private async sendTestToMeni(statusTitle: string) {
     try {
-      // בדיקה שהדפדפן לא קרס לפני שליחת מדיה
       if (!this.client?.pupPage || this.client.pupPage.isClosed()) {
         throw new Error('Puppeteer page is closed or detached');
       }
 
       const dayForTonight = this.getCalculatedOmerDay();
-      const zmanRaw = await this.omerService.getZmanim();
+      const zmanRaw = await this.omerService.getZmanim(); // הזמן הדינמי מה-API
       const now = new Date();
       const currentTime = now.toLocaleTimeString('he-IL', {
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: 'Asia/Jerusalem',
       });
-      const targetTime = zmanRaw
-        ? new Date(zmanRaw).toLocaleTimeString('he-IL', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '19:28';
+
+      let targetDisplay = 'טוען...';
+      if (zmanRaw) {
+        const targetDate = new Date(zmanRaw);
+        targetDisplay = targetDate.toLocaleTimeString('he-IL', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Asia/Jerusalem', // זה מה שמתקן מ-16:28 ל-19:28
+        });
+      }
 
       const imagePath = join(
         process.cwd(),
@@ -142,11 +146,10 @@ export class WhatsappService implements OnModuleInit {
         'omer',
         `${dayForTonight}.jpg`,
       );
-      const caption = `${statusTitle}\n📅 בדיקה לערב יום: *${dayForTonight}* בעומר\n⏰ שעה: *${currentTime}*\n⏳ יעד שליחה: *${targetTime}*`;
+      const caption = `${statusTitle}\n📅 בדיקה לערב יום: *${dayForTonight}* בעומר\n⏰ שעת בדיקה: *${currentTime}*\n⏳ יעד שליחה הערב: *${targetDisplay}*`;
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        // השהייה מוגדלת למניעת קריסת פריים ב-Railway
         await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(this.ownerNumber, media, { caption });
       } else {
