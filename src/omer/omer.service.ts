@@ -15,7 +15,6 @@ export class OmerService {
 
       const sunsetDate = new Date(sunsetIso);
 
-      // לוח חב"ד בני ברק: שקיעה + 24 דקות
       const chabadZman = new Date(sunsetDate.getTime() + 24 * 60 * 1000);
 
       this.logger.debug(
@@ -23,21 +22,43 @@ export class OmerService {
       );
       return chabadZman.toISOString();
     } catch (e) {
-      this.logger.error(`Hebcal Error: ${e.message}`);
+      this.logger.error(`Hebcal Zmanim Error: ${e.message}`);
       return null;
     }
   }
 
+  /**
+   * מושך את נתוני ספירת העומר המדויקים להיום מה-API
+   */
   async getOmerData(): Promise<any> {
     try {
-      const { data } = await axios.get(
-        'https://www.hebcal.com/hebcal?v=1&cfg=json&o=on',
-      );
+      const todayIso = new Date().toISOString().split('T')[0];
+
+      const url = `https://www.hebcal.com/hebcal?v=1&cfg=json&o=on&start=${todayIso}&end=${todayIso}`;
+
+      this.logger.debug(`Fetching Omer data for date: ${todayIso}`);
+      const { data } = await axios.get(url);
+
       const item = data.items?.find((i: any) => i.category === 'omer');
-      if (!item) return null;
+
+      if (!item) {
+        this.logger.warn(`No Omer data found in API for date: ${todayIso}`);
+        return null;
+      }
+
       const dayMatch = item.title.match(/\d+/);
-      return { day: dayMatch ? dayMatch[0] : '', hebrew: item.hebrew };
+      const dayNumber = dayMatch ? dayMatch[0] : '';
+
+      this.logger.log(
+        `Successfully fetched: Day ${dayNumber} (${item.hebrew})`,
+      );
+
+      return {
+        day: dayNumber,
+        hebrew: item.hebrew,
+      };
     } catch (e) {
+      this.logger.error(`Omer Data Fetch Error: ${e.message}`);
       return null;
     }
   }
