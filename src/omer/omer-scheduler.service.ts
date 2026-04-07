@@ -3,8 +3,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { OmerService } from './omer.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { GROUPS } from 'src/constants/groups';
-import { CONFIG, HOLIDAY_EVES_2026 } from 'src/constants/calendar';
+import { HOLIDAY_EVES_2026 } from 'src/constants/calendar';
 import { MESSAGES } from 'src/constants/messages';
+import { CONFIG } from 'src/config/bot.config';
 
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
