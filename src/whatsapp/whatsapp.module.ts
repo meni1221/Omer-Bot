@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
-import { OmerService } from 'src/omer/omer.service';
 
 @Module({
-  providers: [WhatsappService, OmerService],
+  providers: [WhatsappService],
   exports: [WhatsappService],
 })
 export class WhatsappModule {}

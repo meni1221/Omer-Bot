@@ -5,10 +5,16 @@ export const MESSAGES = {
     SHABBAT: 'שבת שלום! 🍷',
     HOLIDAY: 'חג שמח! 🥂',
     EARLY_PREFIX: '🕯️ *תזכורת מוקדמת:*',
-    HALACHIC_WARNING: '\n\n⚠️ *שימו לב:* זו תזכורת מוקדמת לכבוד החג/שבת. את הספירה יש לבצע רק בלילה (אחרי צאת הכוכבים)!',
+    HALACHIC_WARNING:
+      '\n\n⚠️ *שימו לב:* זו תזכורת מוקדמת לכבוד החג/שבת. את הספירה יש לבצע רק בלילה (אחרי צאת הכוכבים)!',
   },
 
-  STARTUP_REPORT: (current: number, total: number, dayType: string, target: string) =>
+  STARTUP_REPORT: (
+    current: number,
+    total: number,
+    dayType: string,
+    target: string,
+  ) =>
     `⚡ *דיווח התנעה (${current}/${total}):* הבוט פעיל.\n` +
     `📅 סוג יום: *${dayType}*\n` +
     `🕒 זמן שליחה מתוכנן: *${target}*`,
@@ -19,5 +25,5 @@ export const MESSAGES = {
     `🎯 זמן יעד: *${target}*\n` +
     `📊 סטטוס: *${status}*`,
 
-  GET_FULL_CAPTION: (prefix: string) => `${prefix}${MESSAGES.OMER_FOOTER}`
+  GET_FULL_CAPTION: (prefix: string) => `${prefix}${MESSAGES.OMER_FOOTER}`,
 };

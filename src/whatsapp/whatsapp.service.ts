@@ -2,8 +2,7 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { OmerService } from 'src/omer/omer.service';
+import { CONFIG } from 'src/config/bot.config';
 
 @Injectable()
 export class WhatsappService implements OnModuleInit {
@@ -11,9 +10,6 @@ export class WhatsappService implements OnModuleInit {
   private readonly logger = new Logger('WhatsappService');
   private isConnected = false;
   private isInitializing = false;
-  private readonly ownerNumber = '972533011599@c.us';
-
-  constructor(private readonly omerService: OmerService) {}
 
   async onModuleInit() {
     await this.initializeClient();
@@ -24,7 +20,7 @@ export class WhatsappService implements OnModuleInit {
     this.isInitializing = true;
     this.isConnected = false;
 
-    this.logger.log('🛠️ ניסיון חיבור אגרסיבי (Optimized for Railway)...');
+    this.logger.log('🛠️ אתחול Whatsapp Client (Optimized for Production)...');
 
     this.client = new Client({
       authStrategy: new LocalAuth({
@@ -43,13 +39,7 @@ export class WhatsappService implements OnModuleInit {
           '--disable-gpu',
           '--no-zygote',
           '--single-process',
-          '--disable-extensions',
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--disable-infobars',
-          '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--maximum-memory=512MB', // הגבלת זיכרון לדפדפן עצמו
+          '--maximum-memory=512MB',
         ],
       },
     });
@@ -61,15 +51,10 @@ export class WhatsappService implements OnModuleInit {
       this.isInitializing = false;
     });
 
-    this.client.on('authenticated', () => {
-      this.logger.log('🔓 אימות בוצע בטלפון! מבצע סנכרון סופי...');
-    });
-
     this.client.on('ready', async () => {
       this.isConnected = true;
       this.isInitializing = false;
       this.logger.log('✅✅✅ READY! הבוט מחובר ופעיל.');
-      await this.sendTestToMeni('🚀 *מני, התחברתי בהצלחה!* הנה בדיקת הרצה:');
     });
 
     try {
@@ -80,100 +65,22 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  @Cron(CronExpression.EVERY_HOUR, {
-    name: 'hourlyCheck',
-    timeZone: 'Asia/Jerusalem',
-  })
-  async hourlyCheck() {
-    // בדיקה אם הבוט באמת מחובר ואקטיבי
-    if (!this.isConnected || !this.client) {
-      this.logger.warn('⚠️ בוט לא מחובר בבדיקה השעתית. מנסה לאתחל...');
-      this.handleRestart();
-      return;
-    }
-
-    try {
-      this.logger.log('⏰ מפעיל בדיקת סימן חיים שעתי (ישראל)...');
-      await this.sendTestToMeni('🟢 *סימן חיים שעתי:* הבוט פעיל.');
-    } catch (e) {
-      this.logger.error('❌ קריסה בסימן חיים: ' + e.message);
-      if (e.message.includes('detached') || e.message.includes('closed')) {
-        this.handleRestart();
-      }
-    }
-  }
-
-  private getCalculatedOmerDay(): number {
-    const startDate = new Date('2026-04-02');
-    const now = new Date();
-    const start = Date.UTC(
-      startDate.getFullYear(),
-      startDate.getMonth(),
-      startDate.getDate(),
-    );
-    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-    return Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
-  }
-
-  private async sendTestToMeni(statusTitle: string) {
-    try {
-      if (!this.client?.pupPage || this.client.pupPage.isClosed()) {
-        throw new Error('Puppeteer page is closed or detached');
-      }
-
-      const dayForTonight = this.getCalculatedOmerDay();
-      const zmanRaw = await this.omerService.getZmanim(); // הזמן הדינמי מה-API
-      const now = new Date();
-      const currentTime = now.toLocaleTimeString('he-IL', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Asia/Jerusalem',
-      });
-
-      let targetDisplay = 'טוען...';
-      if (zmanRaw) {
-        const targetDate = new Date(zmanRaw);
-        targetDisplay = targetDate.toLocaleTimeString('he-IL', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'Asia/Jerusalem', // זה מה שמתקן מ-16:28 ל-19:28
-        });
-      }
-
-      const imagePath = join(
-        process.cwd(),
-        'assets',
-        'omer',
-        `${dayForTonight}.jpg`,
-      );
-      const caption = `${statusTitle}\n📅 בדיקה לערב יום: *${dayForTonight}* בעומר\n⏰ שעת בדיקה: *${currentTime}*\n⏳ יעד שליחה הערב: *${targetDisplay}*`;
-
-      if (existsSync(imagePath)) {
-        const media = MessageMedia.fromFilePath(imagePath);
-        await new Promise((resolve) => setTimeout(resolve, 3500));
-        await this.client.sendMessage(this.ownerNumber, media, { caption });
-      } else {
-        await this.client.sendMessage(
-          this.ownerNumber,
-          `${caption}\n⚠️ *תמונה ${dayForTonight}.jpg לא נמצאה!*`,
-        );
-      }
-    } catch (e) {
-      this.logger.error('Test send failed: ' + e.message);
-      if (e.message.includes('detached') || e.message.includes('closed')) {
-        this.handleRestart();
-      }
-    }
-  }
-
-  async sendOmerMessage(
-    groupId: string,
-    dayNumberFromApi: string,
-    caption: string,
-  ) {
+  // פונקציית שליחה כללית (לטקסט)
+  async sendMessage(to: string, body: string) {
     if (!this.isConnected) return;
     try {
-      const dayNumber = this.getCalculatedOmerDay().toString();
+      await this.client.sendMessage(to, body);
+    } catch (e) {
+      this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
+      if (e.message.includes('detached')) this.handleRestart();
+    }
+  }
+
+  // פונקציה ייעודית לספירת העומר - מקבלת את כל הנתונים מבחוץ
+  async sendOmerMessage(groupId: string, dayNumber: string, caption: string) {
+    if (!this.isConnected) return;
+
+    try {
       const imagePath = join(
         process.cwd(),
         'assets',
@@ -183,26 +90,24 @@ export class WhatsappService implements OnModuleInit {
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
+        // השהייה קטנה למניעת חסימות וואטסאפ בשליחה לקבוצות
         await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(groupId, media, { caption });
 
-        await this.client.sendMessage(
-          this.ownerNumber,
-          `✅ הודעת יום ${dayNumber} הופצה בהצלחה לכל הקבוצות.`,
+        // דיווח למנהל
+        await this.sendMessage(
+          CONFIG.OWNER_NUMBER,
+          `✅ הודעת יום ${dayNumber} הופצה בהצלחה.`,
         );
       } else {
         await this.client.sendMessage(groupId, caption);
-        await this.client.sendMessage(
-          this.ownerNumber,
+        await this.sendMessage(
+          CONFIG.OWNER_NUMBER,
           `⚠️ נשלח טקסט בלבד (תמונה ${dayNumber}.jpg חסרה).`,
         );
       }
     } catch (e) {
-      this.logger.error(`❌ שגיאה בעומר: ${e.message}`);
-      await this.client.sendMessage(
-        this.ownerNumber,
-        `❌ תקלה בשליחה: ${e.message}`,
-      );
+      this.logger.error(`❌ שגיאה בהפצת העומר: ${e.message}`);
       if (e.message.includes('detached') || e.message.includes('closed')) {
         this.handleRestart();
       }
@@ -213,23 +118,10 @@ export class WhatsappService implements OnModuleInit {
     if (this.isInitializing) return;
     this.isConnected = false;
     this.isInitializing = false;
-    this.logger.warn(
-      '🔄 זיהיתי ניתוק פריים או קריסה. אתחול מחדש בעוד 20 שניות...',
-    );
+    this.logger.warn('🔄 זיהיתי קריסה. אתחול מחדש בעוד 20 שניות...');
     try {
       await this.client.destroy();
     } catch (e) {}
     setTimeout(() => this.initializeClient(), 20000);
-  }
-
-  async sendMessage(to: string, body: string) {
-    if (this.isConnected) {
-      try {
-        await this.client.sendMessage(to, body);
-      } catch (e) {
-        this.logger.error(`❌ שגיאה בשליחה: ${e.message}`);
-        if (e.message.includes('detached')) this.handleRestart();
-      }
-    }
   }
 }
