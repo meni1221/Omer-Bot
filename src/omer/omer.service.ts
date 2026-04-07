@@ -47,7 +47,7 @@ export class OmerService {
       }
 
       const dayMatch = item.title.match(/\d+/);
-      const dayNumber = dayMatch ? dayMatch[0] : '';
+      const dayNumber = dayMatch ? dayMatch[0] + 1 : '';
 
       this.logger.log(
         `Successfully fetched: Day ${dayNumber} (${item.hebrew})`,
