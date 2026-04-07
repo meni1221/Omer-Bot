@@ -15,6 +15,7 @@ export class OmerService {
 
       const sunsetDate = new Date(sunsetIso);
 
+      // לוח חב"ד בני ברק: מוסיפים 24 דקות לשקיעה
       const chabadZman = new Date(sunsetDate.getTime() + 24 * 60 * 1000);
 
       this.logger.debug(
@@ -46,8 +47,10 @@ export class OmerService {
         return null;
       }
 
+      // חילוץ המספר וביצוע חיבור מתמטי (במקום שרשור טקסט)
       const dayMatch = item.title.match(/\d+/);
-      const dayNumber = dayMatch ? dayMatch[0] + 1 : '';
+      const actualDay = dayMatch ? parseInt(dayMatch[0], 10) + 1 : 1;
+      const dayNumber = actualDay.toString();
 
       this.logger.log(
         `Successfully fetched: Day ${dayNumber} (${item.hebrew})`,

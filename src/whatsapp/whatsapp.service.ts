@@ -35,11 +35,10 @@ export class WhatsappService implements OnModuleInit {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
+          '--disable-dev-shm-usage', // קריטי למניעת detached frame ב-Railway
           '--disable-gpu',
           '--no-zygote',
           '--single-process',
-          '--maximum-memory=512MB',
         ],
       },
     });
@@ -65,7 +64,6 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  // פונקציית שליחה כללית (לטקסט)
   async sendMessage(to: string, body: string) {
     if (!this.isConnected) return;
     try {
@@ -76,7 +74,6 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
-  // פונקציה ייעודית לספירת העומר - מקבלת את כל הנתונים מבחוץ
   async sendOmerMessage(groupId: string, dayNumber: string, caption: string) {
     if (!this.isConnected) return;
 
@@ -90,11 +87,9 @@ export class WhatsappService implements OnModuleInit {
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        // השהייה קטנה למניעת חסימות וואטסאפ בשליחה לקבוצות
         await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(groupId, media, { caption });
 
-        // דיווח למנהל
         await this.sendMessage(
           CONFIG.OWNER_NUMBER,
           `✅ הודעת יום ${dayNumber} הופצה בהצלחה.`,
