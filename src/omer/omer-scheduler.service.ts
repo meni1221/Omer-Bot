@@ -3,7 +3,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { OmerService } from './omer.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { GROUPS } from 'src/constants/groups';
-import { EARLY_SEND_TIME, HOLIDAY_EVES_2026 } from 'src/constants/holidayEves';
+import { CONFIG, HOLIDAY_EVES_2026 } from 'src/constants/calendar';
+import { MESSAGES } from 'src/constants/messages';
 
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
@@ -12,8 +13,6 @@ export class OmerSchedulerService implements OnModuleInit {
   private lastSentDay: number | null = null;
   private startupTime: number = 0;
   private isProcessing = false;
-  private readonly ownerNumber = '972533011599@c.us';
-  private readonly groups: string[] = GROUPS;
 
   constructor(
     private readonly omerService: OmerService,
@@ -22,7 +21,7 @@ export class OmerSchedulerService implements OnModuleInit {
 
   async onModuleInit() {
     this.startupTime = Date.now();
-    this.logger.log('🚀 Omer Scheduler Initialized (Full Calendar Logic Mode)');
+    this.logger.log('🚀 Omer Scheduler Initialized (Production Mode)');
     await this.refreshZmanim();
   }
 
@@ -44,86 +43,99 @@ export class OmerSchedulerService implements OnModuleInit {
       return;
     }
 
+    // --- זיהוי סוג יום ויעד ---
     const isFriday = dayOfWeek === 5;
     const isHolidayEve = HOLIDAY_EVES_2026.includes(dateStr);
     const isEarlyDay = isFriday || isHolidayEve;
-
-    const displayTarget = isEarlyDay ? EARLY_SEND_TIME : this.targetTime;
+    const displayTarget = isEarlyDay ? CONFIG.EARLY_SEND_TIME : this.targetTime;
     const dayType = isFriday
       ? 'ערב שבת 🕯️'
       : isHolidayEve
         ? 'ערב חג 🍷'
         : 'יום חול ☀️';
 
-    if (now.getSeconds() === 0) {
-      this.logger.debug(
-        `[Heartbeat] ${currentTime} | ${dayType} | Target: ${displayTarget}`,
-      );
+    // --- לוגים ודיווחים ---
+    this.executeReports(now, currentTime, dayType, displayTarget);
+
+    if (this.isProcessing) return;
+
+    // --- לוגיקת שליחה מוקדמת (שישי/חג) ---
+    if (isEarlyDay) {
+      if (
+        currentTime === CONFIG.EARLY_SEND_TIME &&
+        this.lastSentDay !== now.getDate()
+      ) {
+        const greeting = isFriday
+          ? MESSAGES.GREETINGS.SHABBAT
+          : MESSAGES.GREETINGS.HOLIDAY;
+        const fullPrefix = `${MESSAGES.GREETINGS.EARLY_PREFIX} ${greeting}${MESSAGES.GREETINGS.HALACHIC_WARNING}`;
+        await this.handleDistribution(now, fullPrefix);
+      }
+      if (currentTime >= CONFIG.EARLY_SEND_TIME) return;
     }
 
-    const minutesSinceStartup = (Date.now() - this.startupTime) / 60000;
-    if (minutesSinceStartup <= 10 && now.getSeconds() === 0) {
+    // --- הגנת שבת ושליחה רגילה ---
+    if (
+      dayOfWeek === 6 ||
+      (isFriday && currentTime > CONFIG.SHABBAT_PROTECTION_TIME)
+    )
+      return;
+
+    if (currentTime === this.targetTime && this.lastSentDay !== now.getDate()) {
+      await this.handleDistribution(now);
+    }
+  }
+
+  private async executeReports(
+    now: Date,
+    currentTime: string,
+    dayType: string,
+    displayTarget: string,
+  ) {
+    if (now.getSeconds() !== 0) return;
+
+    this.logger.debug(
+      `[Heartbeat] ${currentTime} | ${dayType} | Target: ${displayTarget}`,
+    );
+
+    const minsActive = Math.floor((Date.now() - this.startupTime) / 60000);
+
+    if (minsActive <= CONFIG.STARTUP_PULSE_MINUTES) {
       await this.whatsappService
         .sendMessage(
-          this.ownerNumber,
-          `⚡ *דיווח התנעה (${Math.floor(minutesSinceStartup)}/10):* הבוט פעיל.\n` +
-            `📅 סוג יום: *${dayType}*\n` +
-            `🕒 זמן שליחה מתוכנן: *${displayTarget}*`,
+          CONFIG.OWNER_NUMBER,
+          MESSAGES.STARTUP_REPORT(
+            minsActive,
+            CONFIG.STARTUP_PULSE_MINUTES,
+            dayType,
+            displayTarget,
+          ),
         )
         .catch(() => {});
     }
 
-    if (now.getMinutes() === 0 && now.getSeconds() === 0) {
+    if (now.getMinutes() === 0) {
       const status =
         this.lastSentDay === now.getDate() ? '✅ נשלח' : '⏳ ממתין';
       await this.whatsappService
         .sendMessage(
-          this.ownerNumber,
-          `🕒 *עדכון שעתי - בוט העומר:*\n` +
-            `📅 סוג יום: *${dayType}*\n` +
-            `🎯 זמן יעד: *${displayTarget}*\n` +
-            `📊 סטטוס: *${status}*`,
+          CONFIG.OWNER_NUMBER,
+          MESSAGES.HOURLY_REPORT(dayType, displayTarget, status),
         )
         .catch(() => {});
     }
+  }
 
-    if (this.isProcessing) return;
-
-    if (isEarlyDay) {
-      if (
-        currentTime === EARLY_SEND_TIME &&
-        this.lastSentDay !== now.getDate()
-      ) {
-        this.logger.log(`⚠️ Triggering early distribution for ${dayType}...`);
-        this.isProcessing = true;
-        try {
-          const greeting = isFriday ? 'שבת שלום! 🍷' : 'חג שמח! 🥂';
-          await this.sendDailyUpdate(
-            `🕯️ *תזכורת מוקדמת:* \nהערב נספור:\n${greeting}`,
-          );
-          this.lastSentDay = now.getDate();
-        } finally {
-          this.isProcessing = false;
-        }
-      }
-      if (currentTime >= EARLY_SEND_TIME) return;
-    }
-
-    if (dayOfWeek === 6 || (isFriday && currentTime > '19:00')) return;
-
-    if (currentTime === this.targetTime && this.lastSentDay !== now.getDate()) {
-      this.logger.log(
-        `⚠️ Triggering daily distribution for day ${now.getDate()}...`,
-      );
-      this.isProcessing = true;
-      try {
-        await this.sendDailyUpdate();
-        this.lastSentDay = now.getDate();
-      } catch (e) {
-        this.logger.error(`❌ Distribution failed: ${e.message}`);
-      } finally {
-        this.isProcessing = false;
-      }
+  private async handleDistribution(now: Date, prefix: string = '') {
+    this.logger.log(`⚠️ Triggering distribution...`);
+    this.isProcessing = true;
+    try {
+      await this.sendDailyUpdate(prefix);
+      this.lastSentDay = now.getDate();
+    } catch (e) {
+      this.logger.error(`❌ Distribution failed: ${e.message}`);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -131,30 +143,25 @@ export class OmerSchedulerService implements OnModuleInit {
     try {
       const zmanIso = await this.omerService.getZmanim();
       if (zmanIso) {
-        const dateObj = new Date(zmanIso);
-        this.targetTime = dateObj.toLocaleTimeString('he-IL', {
+        this.targetTime = new Date(zmanIso).toLocaleTimeString('he-IL', {
           hour: '2-digit',
           minute: '2-digit',
           hour12: false,
           timeZone: 'Asia/Jerusalem',
         });
-        this.logger.log(
-          `📍 Target time set to Israel Time: ${this.targetTime}`,
-        );
+        this.logger.log(`📍 Target time set: ${this.targetTime}`);
       }
     } catch (e) {
-      this.logger.error(`Failed to refresh zmanim: ${e.message}`);
+      this.logger.error(`Failed refresh: ${e.message}`);
     }
   }
 
   private async sendDailyUpdate(prefix: string = '') {
     const data = await this.omerService.getOmerData();
-    const day = data?.day;
+    const day = data?.day || '6';
+    const caption = MESSAGES.GET_FULL_CAPTION(prefix);
 
-    this.logger.log(`🗓️ Preparing message for Omer Day ${day}`);
-    const caption = `${prefix}\n\nספירת העומר\n\n📢 הצטרפו לתזכורת :\nhttps://chat.whatsapp.com/I8bONiOPYoi8a7QnYT9p5a?mode=gi_t\n\nתזכו למצוות!\n\nשימו לב שעברנו לעבודה עם רובוט 🤖`;
-
-    for (const groupId of this.groups) {
+    for (const groupId of GROUPS) {
       await this.whatsappService.sendOmerMessage(
         groupId,
         day.toString(),
