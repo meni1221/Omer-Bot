@@ -23,8 +23,36 @@ export class OmerSchedulerService implements OnModuleInit {
   async onModuleInit() {
     this.startupTime = Date.now();
     this.logger.log('🚀 Omer Scheduler Initialized (Production Mode)');
+
     await this.refreshZmanim();
+
+    this.checkIfAlreadySentToday();
+
     await this.runStartupPreview();
+  }
+
+  private checkIfAlreadySentToday() {
+    const now = new Date();
+    const currentTime = now.toLocaleTimeString('he-IL', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Jerusalem',
+    });
+
+    const dateStr = now.toLocaleDateString('en-CA');
+    const isEarlyDay =
+      now.getDay() === 5 || HOLIDAY_EVES_2026.includes(dateStr);
+    const effectiveTarget = isEarlyDay
+      ? CONFIG.EARLY_SEND_TIME
+      : this.targetTime;
+
+    if (effectiveTarget && currentTime >= effectiveTarget) {
+      this.lastSentDay = now.getDate();
+      this.logger.log(
+        `🛡️ Startup Guard: Current time (${currentTime}) is past target (${effectiveTarget}). Today marked as SENT.`,
+      );
+    }
   }
 
   private async runStartupPreview() {
@@ -33,7 +61,7 @@ export class OmerSchedulerService implements OnModuleInit {
       const data = await this.omerService.getOmerData();
       const day = data?.day || '6';
 
-      const previewMessage = `🔄 *בדיקת מערכת - הבוט עלה*\nיום העומר שזוהה: *${day}*\nיעד שליחה: ${this.targetTime || 'בחישוב...'}`;
+      const previewMessage = `🔄 *בדיקת מערכת - הבוט עלה*\nיום העומר שזוהה: *${day}*\nיעד שליחה: ${this.targetTime || 'בחישוב...'}\nסטטוס הפצה: ${this.lastSentDay === new Date().getDate() ? '✅ נשלח/חסום' : '⏳ ממתין'}`;
 
       await this.whatsappService.sendOmerMessage(
         CONFIG.OWNER_NUMBER,
@@ -65,7 +93,6 @@ export class OmerSchedulerService implements OnModuleInit {
       return;
     }
 
-    // --- זיהוי סוג יום ויעד ---
     const isFriday = dayOfWeek === 5;
     const isHolidayEve = HOLIDAY_EVES_2026.includes(dateStr);
     const isEarlyDay = isFriday || isHolidayEve;
@@ -76,12 +103,10 @@ export class OmerSchedulerService implements OnModuleInit {
         ? 'ערב חג 🍷'
         : 'יום חול ☀️';
 
-    // --- לוגים ודיווחים ---
     this.executeReports(now, currentTime, dayType, displayTarget);
 
     if (this.isProcessing) return;
 
-    // --- לוגיקת שליחה מוקדמת (שישי/חג) ---
     if (isEarlyDay) {
       if (
         currentTime === CONFIG.EARLY_SEND_TIME &&
@@ -96,7 +121,6 @@ export class OmerSchedulerService implements OnModuleInit {
       if (currentTime >= CONFIG.EARLY_SEND_TIME) return;
     }
 
-    // --- הגנת שבת ושליחה רגילה ---
     if (
       dayOfWeek === 6 ||
       (isFriday && currentTime > CONFIG.SHABBAT_PROTECTION_TIME)
@@ -115,14 +139,11 @@ export class OmerSchedulerService implements OnModuleInit {
     displayTarget: string,
   ) {
     if (now.getSeconds() !== 0) return;
-
     this.logger.debug(
       `[Heartbeat] ${currentTime} | ${dayType} | Target: ${displayTarget}`,
     );
-
     const minsActive = Math.floor((Date.now() - this.startupTime) / 60000);
 
-    // דיווח סטארט-אפ ב-10 דקות הראשונות
     if (minsActive <= CONFIG.STARTUP_PULSE_MINUTES) {
       await this.whatsappService
         .sendMessage(
@@ -181,7 +202,7 @@ export class OmerSchedulerService implements OnModuleInit {
 
   private async sendDailyUpdate(prefix: string = '') {
     const data = await this.omerService.getOmerData();
-    const day = data?.day || '6'; // ברירת מחדל ליום הנוכחי אם נכשל
+    const day = data?.day || '6';
     const caption = MESSAGES.GET_FULL_CAPTION(prefix);
 
     for (const groupId of GROUPS) {
@@ -190,7 +211,6 @@ export class OmerSchedulerService implements OnModuleInit {
         day.toString(),
         caption,
       );
-      // השהייה קלה למניעת חסימות
       await new Promise((res) => setTimeout(res, 3000));
     }
   }
