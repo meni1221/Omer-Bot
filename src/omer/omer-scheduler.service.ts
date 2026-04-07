@@ -24,6 +24,27 @@ export class OmerSchedulerService implements OnModuleInit {
     this.startupTime = Date.now();
     this.logger.log('🚀 Omer Scheduler Initialized (Production Mode)');
     await this.refreshZmanim();
+    await this.runStartupPreview();
+  }
+
+  private async runStartupPreview() {
+    try {
+      this.logger.log('📸 Generating startup preview for admin...');
+      const data = await this.omerService.getOmerData();
+      const day = data?.day || '6';
+
+      const previewMessage = `🔄 *בדיקת מערכת - הבוט עלה*\nיום העומר שזוהה: *${day}*\nיעד שליחה: ${this.targetTime || 'בחישוב...'}`;
+
+      await this.whatsappService.sendOmerMessage(
+        CONFIG.OWNER_NUMBER,
+        day.toString(),
+        previewMessage,
+      );
+
+      this.logger.log(`✅ Startup preview sent to admin (Day: ${day})`);
+    } catch (e) {
+      this.logger.error(`Failed to send startup preview: ${e.message}`);
+    }
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -101,6 +122,7 @@ export class OmerSchedulerService implements OnModuleInit {
 
     const minsActive = Math.floor((Date.now() - this.startupTime) / 60000);
 
+    // דיווח סטארט-אפ ב-10 דקות הראשונות
     if (minsActive <= CONFIG.STARTUP_PULSE_MINUTES) {
       await this.whatsappService
         .sendMessage(
@@ -159,7 +181,7 @@ export class OmerSchedulerService implements OnModuleInit {
 
   private async sendDailyUpdate(prefix: string = '') {
     const data = await this.omerService.getOmerData();
-    const day = data?.day || '6';
+    const day = data?.day || '6'; // ברירת מחדל ליום הנוכחי אם נכשל
     const caption = MESSAGES.GET_FULL_CAPTION(prefix);
 
     for (const groupId of GROUPS) {
@@ -168,6 +190,8 @@ export class OmerSchedulerService implements OnModuleInit {
         day.toString(),
         caption,
       );
+      // השהייה קלה למניעת חסימות
+      await new Promise((res) => setTimeout(res, 3000));
     }
   }
 }
