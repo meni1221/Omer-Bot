@@ -3,9 +3,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { OmerService } from './omer.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { GROUPS } from 'src/constants/groups';
-import { HOLIDAY_EVES_2026 } from 'src/constants/calendar';
+import { HOLIDAY_EVES_2026 } from 'src/constants/calendar'; // CONFIG הוסר מכאן
 import { MESSAGES } from 'src/constants/messages';
-import { CONFIG } from 'src/config/bot.config';
+import { CONFIG } from 'src/config/bot.config'; // CONFIG מיובא מכאן כראוי
 
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
@@ -43,10 +43,12 @@ export class OmerSchedulerService implements OnModuleInit {
     const dateStr = now.toLocaleDateString('en-CA');
     const isEarlyDay =
       now.getDay() === 5 || HOLIDAY_EVES_2026.includes(dateStr);
+
     const effectiveTarget = isEarlyDay
       ? CONFIG.EARLY_SEND_TIME
       : this.targetTime;
 
+    // הגנה: אם עברנו את זמן השליחה, מסמנים כנשלח כדי למנוע כפילויות בריסטארט
     if (effectiveTarget && currentTime >= effectiveTarget) {
       this.lastSentDay = now.getDate();
       this.logger.log(
@@ -59,7 +61,7 @@ export class OmerSchedulerService implements OnModuleInit {
     try {
       this.logger.log('📸 Generating startup preview for admin...');
       const data = await this.omerService.getOmerData();
-      const day = data?.day || '6';
+      const day = data?.day || '7'; // ברירת מחדל ליום 7 אם נכשל
 
       const previewMessage = `🔄 *בדיקת מערכת - הבוט עלה*\nיום העומר שזוהה: *${day}*\nיעד שליחה: ${this.targetTime || 'בחישוב...'}\nסטטוס הפצה: ${this.lastSentDay === new Date().getDate() ? '✅ נשלח/חסום' : '⏳ ממתין'}`;
 
@@ -70,7 +72,7 @@ export class OmerSchedulerService implements OnModuleInit {
       );
 
       this.logger.log(`✅ Startup preview sent to admin (Day: ${day})`);
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Failed to send startup preview: ${e.message}`);
     }
   }
@@ -97,6 +99,7 @@ export class OmerSchedulerService implements OnModuleInit {
     const isHolidayEve = HOLIDAY_EVES_2026.includes(dateStr);
     const isEarlyDay = isFriday || isHolidayEve;
     const displayTarget = isEarlyDay ? CONFIG.EARLY_SEND_TIME : this.targetTime;
+
     const dayType = isFriday
       ? 'ערב שבת 🕯️'
       : isHolidayEve
@@ -121,6 +124,7 @@ export class OmerSchedulerService implements OnModuleInit {
       if (currentTime >= CONFIG.EARLY_SEND_TIME) return;
     }
 
+    // מניעת שליחה בשבת
     if (
       dayOfWeek === 6 ||
       (isFriday && currentTime > CONFIG.SHABBAT_PROTECTION_TIME)
@@ -139,11 +143,14 @@ export class OmerSchedulerService implements OnModuleInit {
     displayTarget: string,
   ) {
     if (now.getSeconds() !== 0) return;
+
     this.logger.debug(
       `[Heartbeat] ${currentTime} | ${dayType} | Target: ${displayTarget}`,
     );
+
     const minsActive = Math.floor((Date.now() - this.startupTime) / 60000);
 
+    // דיווח ראשוני למנהל על עליית מערכת
     if (minsActive <= CONFIG.STARTUP_PULSE_MINUTES) {
       await this.whatsappService
         .sendMessage(
@@ -158,6 +165,7 @@ export class OmerSchedulerService implements OnModuleInit {
         .catch(() => {});
     }
 
+    // דיווח שעתי
     if (now.getMinutes() === 0) {
       const status =
         this.lastSentDay === now.getDate() ? '✅ נשלח' : '⏳ ממתין';
@@ -176,7 +184,7 @@ export class OmerSchedulerService implements OnModuleInit {
     try {
       await this.sendDailyUpdate(prefix);
       this.lastSentDay = now.getDate();
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`❌ Distribution failed: ${e.message}`);
     } finally {
       this.isProcessing = false;
@@ -195,14 +203,14 @@ export class OmerSchedulerService implements OnModuleInit {
         });
         this.logger.log(`📍 Target time set: ${this.targetTime}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Failed refresh: ${e.message}`);
     }
   }
 
   private async sendDailyUpdate(prefix: string = '') {
     const data = await this.omerService.getOmerData();
-    const day = data?.day || '6';
+    const day = data?.day || '7';
     const caption = MESSAGES.GET_FULL_CAPTION(prefix);
 
     for (const groupId of GROUPS) {
@@ -211,6 +219,7 @@ export class OmerSchedulerService implements OnModuleInit {
         day.toString(),
         caption,
       );
+      // השהיה בין קבוצות למניעת חסימות
       await new Promise((res) => setTimeout(res, 3000));
     }
   }
