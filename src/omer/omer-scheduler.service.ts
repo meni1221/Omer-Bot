@@ -55,11 +55,24 @@ export class OmerSchedulerService implements OnModuleInit {
 
   private async runStartupPreview() {
     try {
-      this.logger.log('📸 Generating startup preview for admin...');
-      const data = await this.omerService.getOmerData();
-      const day = data?.day;
+      this.logger.log('📸 Generating dynamic startup preview for admin...');
 
-      const previewMessage = `🔄 *בדיקת מערכת - הבוט עלה*\nיום העומר שזוהה: *${day}*\nיעד שליחה: ${this.targetTime || 'בחישוב...'}\nסטטוס הפצה: ${this.lastSentDay === new Date().getDate() ? '✅ נשלח/חסום' : '⏳ ממתין'}`;
+      const data = await this.omerService.getOmerData();
+
+      if (!data || !data.day) {
+        throw new Error('API returned no day data during startup');
+      }
+
+      const day = data.day;
+      const status =
+        this.lastSentDay === new Date().getDate() ? '✅ נשלח/חסום' : '⏳ ממתין';
+
+      const previewMessage =
+        `🔄 *בדיקת מערכת - הבוט עלה*\n` +
+        `יום מזוהה: *${day}*\n` +
+        `יעד שליחה: ${this.targetTime || 'בחישוב...'}\n` +
+        `סטטוס הפצה: ${status}\n` +
+        `סוג בדיקה: *התנעה (Startup)* 🚀`;
 
       await this.whatsappService.sendOmerMessage(
         CONFIG.OWNER_NUMBER,
@@ -67,9 +80,17 @@ export class OmerSchedulerService implements OnModuleInit {
         previewMessage,
       );
 
-      this.logger.log(`✅ Startup preview sent to admin (Day: ${day})`);
+      this.logger.log(
+        `✅ Startup preview with image sent to admin (Day: ${day})`,
+      );
     } catch (e: any) {
       this.logger.error(`Failed to send startup preview: ${e.message}`);
+      await this.whatsappService
+        .sendMessage(
+          CONFIG.OWNER_NUMBER,
+          `⚠️ *התנעה עברה עם שגיאת מדיה!*\nשגיאה: ${e.message}`,
+        )
+        .catch(() => {});
     }
   }
 
