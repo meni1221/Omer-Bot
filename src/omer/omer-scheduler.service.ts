@@ -26,7 +26,9 @@ export class OmerSchedulerService implements OnModuleInit {
 
     await this.refreshZmanim();
     this.checkIfAlreadySentToday();
-    await this.runStartupPreview();
+
+    // מפעיל את תהליך ה-Preview (הוא ימתין לחיבור בפנים באופן אסינכרוני)
+    this.runStartupPreview();
   }
 
   private checkIfAlreadySentToday() {
@@ -55,8 +57,26 @@ export class OmerSchedulerService implements OnModuleInit {
 
   private async runStartupPreview() {
     try {
-      this.logger.log('📸 Generating dynamic startup preview for admin...');
+      this.logger.log(
+        '⏳ Startup Preview: Waiting for WhatsApp connection stability...',
+      );
 
+      // המתנה של עד 60 שניות לחיבור READY
+      let attempts = 0;
+      while (!this.whatsappService.isClientReady() && attempts < 60) {
+        await new Promise((res) => setTimeout(res, 1000));
+        attempts++;
+      }
+
+      if (!this.whatsappService.isClientReady()) {
+        throw new Error(
+          'WhatsApp connection timeout - could not send startup image',
+        );
+      }
+
+      this.logger.log(
+        '📸 Connection stable. Generating dynamic startup preview...',
+      );
       const data = await this.omerService.getOmerData();
 
       if (!data || !data.day) {
@@ -85,6 +105,7 @@ export class OmerSchedulerService implements OnModuleInit {
       );
     } catch (e: any) {
       this.logger.error(`Failed to send startup preview: ${e.message}`);
+      // גיבוי בטקסט בלבד במקרה של כשל במדיה
       await this.whatsappService
         .sendMessage(
           CONFIG.OWNER_NUMBER,
@@ -228,6 +249,8 @@ export class OmerSchedulerService implements OnModuleInit {
   private async sendDailyUpdate(prefix: string = '') {
     const data = await this.omerService.getOmerData();
     const day = data?.day;
+    if (!day) return;
+
     const caption = MESSAGES.GET_FULL_CAPTION(prefix);
 
     for (const groupId of GROUPS) {

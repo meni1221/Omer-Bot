@@ -15,6 +15,13 @@ export class WhatsappService implements OnModuleInit {
     await this.initializeClient();
   }
 
+  /**
+   * מאפשר לשירותים אחרים לבדוק אם החיבור לוואטסאפ פעיל
+   */
+  public isClientReady(): boolean {
+    return this.isConnected;
+  }
+
   private async initializeClient(): Promise<void> {
     if (this.isInitializing) return;
     this.isInitializing = true;
