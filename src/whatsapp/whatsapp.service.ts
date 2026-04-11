@@ -1,3 +1,4 @@
+// src/whatsapp/whatsapp.service.ts
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import { join } from 'path';
@@ -22,12 +23,24 @@ export class WhatsappService implements OnModuleInit {
     return this.isConnected;
   }
 
+  /**
+   * פונקציית עזר פרטית להשהיה אקראית (Anti-Ban Jitter)
+   */
+  private async sleepWithJitter(): Promise<void> {
+    const { MIN, MAX } = CONFIG.DELAY;
+    const randomDelay = Math.floor(Math.random() * (MAX - MIN + 1) + MIN);
+    this.logger.debug(
+      `🛡️ Anti-Ban: Waiting ${randomDelay}ms before sending...`,
+    );
+    return new Promise((resolve) => setTimeout(resolve, randomDelay));
+  }
+
   private async initializeClient(): Promise<void> {
     if (this.isInitializing) return;
     this.isInitializing = true;
     this.isConnected = false;
 
-    // ניקוי קבצי נעילה (Locks) לפני האתחול
+    // ניקוי קבצי נעילה (Locks) לפני האתחול למניעת קריסות ב-Railway
     this.cleanupLockFiles();
 
     this.logger.log('🛠️ אתחול Whatsapp Client (Optimized for Production)...');
@@ -35,7 +48,7 @@ export class WhatsappService implements OnModuleInit {
     this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'omer-bot-v3',
-        dataPath: './.wwebjs_auth',
+        dataPath: CONFIG.PATHS.AUTH_DIR,
       }),
       authTimeoutMs: 0,
       qrMaxRetries: 30,
@@ -83,14 +96,19 @@ export class WhatsappService implements OnModuleInit {
       this.logger.warn(`🔌 הבוט נותק: ${reason}`);
       this.handleRestart();
     });
+
+    this.client.on('auth_failure', (msg) => {
+      this.logger.error(`❌ כשל באימות (Auth Failure): ${msg}`);
+      this.handleRestart();
+    });
   }
 
   /**
-   * ניקוי רקורסיבי של קבצי SingletonLock שמונעים מהקליינט לעלות ב-Docker/Volumes
+   * ניקוי רקורסיבי של קבצי SingletonLock שמונעים מהקליינט לעלות ב-Volumes של Railway
    */
   private cleanupLockFiles(): void {
     try {
-      const authPath = join(process.cwd(), '.wwebjs_auth');
+      const authPath = CONFIG.PATHS.AUTH_DIR;
       if (!existsSync(authPath)) return;
 
       this.logger.warn('🧹 סורק ומנקה קבצי Lock מה-Volume...');
@@ -137,18 +155,14 @@ export class WhatsappService implements OnModuleInit {
     if (!this.isConnected) return;
 
     try {
-      const imagePath = join(
-        process.cwd(),
-        'assets',
-        'omer',
-        `${dayNumber}.jpg`,
-      );
+      const imagePath = join(CONFIG.PATHS.ASSETS_OMER, `${dayNumber}.jpg`);
+
+      // אבטחה: השהייה אקראית לפני כל פעולת שליחה למניעת חסימות
+      await this.sleepWithJitter();
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
 
-        // השהייה קלה למניעת זיהוי כבוט ספאמר (אנטי-באן)
-        await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(groupId, media, { caption });
 
         await this.sendMessage(
@@ -157,6 +171,7 @@ export class WhatsappService implements OnModuleInit {
         );
       } else {
         await this.client.sendMessage(groupId, caption);
+
         await this.sendMessage(
           CONFIG.OWNER_NUMBER,
           `⚠️ נשלח טקסט בלבד (תמונה ${dayNumber}.jpg חסרה).`,
@@ -170,11 +185,13 @@ export class WhatsappService implements OnModuleInit {
   }
 
   private checkConnectionState(errorMessage: string): void {
-    if (
-      errorMessage.includes('detached') ||
-      errorMessage.includes('closed') ||
-      errorMessage.includes('Session closed')
-    ) {
+    const criticalErrors = [
+      'detached',
+      'closed',
+      'Session closed',
+      'Target closed',
+    ];
+    if (criticalErrors.some((e) => errorMessage.includes(e))) {
       this.handleRestart();
     }
   }
@@ -186,7 +203,9 @@ export class WhatsappService implements OnModuleInit {
     this.logger.warn('🔄 מאתחל את הקליינט מחדש בעוד 20 שניות...');
 
     try {
-      await this.client.destroy();
+      if (this.client) {
+        await this.client.destroy();
+      }
     } catch (err) {
       const error = err as Error;
       this.logger.error(`שגיאה בסגירת הקליינט: ${error.message}`);
