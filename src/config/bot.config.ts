@@ -39,7 +39,7 @@ export const CONFIG: BotConfig = {
 
   API_ENDPOINTS: {
     ZMANIM: 'https://www.hebcal.com/zmanim',
-    OMER_DATA: 'https://www.hebcal.com/etc/hdate-he.json',
+    OMER_DATA: 'https://www.hebcal.com/hebcal',
   },
 
   PATHS: {
