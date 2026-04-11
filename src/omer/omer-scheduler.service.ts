@@ -61,7 +61,6 @@ export class OmerSchedulerService implements OnModuleInit {
         '⏳ Startup Preview: Waiting for WhatsApp connection stability...',
       );
 
-      // המתנה של עד 60 שניות לחיבור READY
       let attempts = 0;
       while (!this.whatsappService.isClientReady() && attempts < 60) {
         await new Promise((res) => setTimeout(res, 1000));
@@ -105,7 +104,6 @@ export class OmerSchedulerService implements OnModuleInit {
       );
     } catch (e: any) {
       this.logger.error(`Failed to send startup preview: ${e.message}`);
-      // גיבוי בטקסט בלבד במקרה של כשל במדיה
       await this.whatsappService
         .sendMessage(
           CONFIG.OWNER_NUMBER,
@@ -136,16 +134,22 @@ export class OmerSchedulerService implements OnModuleInit {
     const isHolidayEve = HOLIDAY_EVES_2026.includes(dateStr);
     const isEarlyDay = isFriday || isHolidayEve;
     const displayTarget = isEarlyDay ? CONFIG.EARLY_SEND_TIME : this.targetTime;
+    
+    // זיהוי מוצאי שבת לצורך הריפורט
+    const isMotzaeiShabbat = dayOfWeek === 6 && currentTime >= this.targetTime;
     const dayType = isFriday
       ? 'ערב שבת 🕯️'
       : isHolidayEve
         ? 'ערב חג 🍷'
-        : 'יום חול ☀️';
+        : isMotzaeiShabbat 
+          ? 'מוצאי שבת ✨'
+          : 'יום חול ☀️';
 
     this.executeReports(now, currentTime, dayType, displayTarget);
 
     if (this.isProcessing) return;
 
+    // טיפול בימים מוקדמים (שישי וערבי חג)
     if (isEarlyDay) {
       if (
         currentTime === CONFIG.EARLY_SEND_TIME &&
@@ -160,12 +164,18 @@ export class OmerSchedulerService implements OnModuleInit {
       if (currentTime >= CONFIG.EARLY_SEND_TIME) return;
     }
 
-    if (
-      dayOfWeek === 6 ||
-      (isFriday && currentTime > CONFIG.SHABBAT_PROTECTION_TIME)
-    )
-      return;
+    // --- התיקון הקריטי כאן ---
+    // אנחנו חוסמים רק אם זה יום שישי אחרי הטווח המוגן, 
+    // או אם זה יום שבת ועדיין לא הגיע זמן היעד (צאת השבת)
+    const isFridayAfterProtection = isFriday && currentTime > CONFIG.SHABBAT_PROTECTION_TIME;
+    const isShabbatBeforeOut = dayOfWeek === 6 && currentTime < this.targetTime;
 
+    if (isFridayAfterProtection || isShabbatBeforeOut) {
+      return;
+    }
+    // --- סוף התיקון ---
+
+    // שליחה רגילה (כולל מוצאי שבת וימי חול)
     if (currentTime === this.targetTime && this.lastSentDay !== now.getDate()) {
       await this.handleDistribution(now);
     }
@@ -203,7 +213,7 @@ export class OmerSchedulerService implements OnModuleInit {
         const status =
           this.lastSentDay === now.getDate() ? '✅ נשלח' : '⏳ ממתין';
         const data = await this.omerService.getOmerData();
-        const day = data?.day || '8';
+        const day = data?.day || '...';
 
         await this.whatsappService.sendOmerMessage(
           CONFIG.OWNER_NUMBER,
