@@ -163,12 +163,13 @@ export class WhatsappService implements OnModuleInit {
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
 
+        // 1. שליחה לקבוצה
         await this.client.sendMessage(groupId, media, { caption });
 
-        await this.sendMessage(
-          CONFIG.OWNER_NUMBER,
-          `✅ הודעת יום ${dayNumber} הופצה בהצלחה ל- ${groupId}`,
-        );
+        // 2. שליחה למנהל (אתה) - מקבל גם את התמונה וגם את האישור לפרטי
+        await this.client.sendMessage(CONFIG.OWNER_NUMBER, media, {
+          caption: `✅ הודעת יום ${dayNumber} הופצה בהצלחה ל- ${groupId}`,
+        });
       } else {
         await this.client.sendMessage(groupId, caption);
 
