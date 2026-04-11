@@ -27,31 +27,8 @@ export class WhatsappService implements OnModuleInit {
     this.isInitializing = true;
     this.isConnected = false;
 
-    // --- ניקוי אגרסיבי של קבצי SingletonLock ב-Volume ---
-    try {
-      const authPath = join(process.cwd(), '.wwebjs_auth');
-      if (existsSync(authPath)) {
-        this.logger.warn('🧹 סורק ומנקה קבצי Lock מה-Volume...');
-
-        const cleanLocks = (dir: string) => {
-          const items = readdirSync(dir);
-          for (const item of items) {
-            const fullPath = join(dir, item);
-            if (lstatSync(fullPath).isDirectory()) {
-              cleanLocks(fullPath); // סריקה רקורסיבית
-            } else if (item === 'SingletonLock') {
-              rmSync(fullPath, { force: true });
-              this.logger.log(`🗑️ הוסר בהצלחה: ${fullPath}`);
-            }
-          }
-        };
-
-        cleanLocks(authPath);
-      }
-    } catch (err: any) {
-      this.logger.error(`⚠️ תקלה במהלך ניקוי קבצי Lock: ${err.message}`);
-    }
-    // ----------------------------------------------------
+    // ניקוי קבצי נעילה (Locks) לפני האתחול
+    this.cleanupLockFiles();
 
     this.logger.log('🛠️ אתחול Whatsapp Client (Optimized for Production)...');
 
@@ -76,6 +53,19 @@ export class WhatsappService implements OnModuleInit {
       },
     });
 
+    this.setupEventListeners();
+
+    try {
+      await this.client.initialize();
+    } catch (err) {
+      const error = err as Error;
+      this.logger.error(`❌ שגיאה באתחול ה-Client: ${error.message}`);
+      this.isInitializing = false;
+      this.handleRestart();
+    }
+  }
+
+  private setupEventListeners(): void {
     this.client.on('qr', (qr: string) => {
       const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`;
       this.logger.log('📢 QR חדש לסריקה!');
@@ -83,30 +73,59 @@ export class WhatsappService implements OnModuleInit {
       this.isInitializing = false;
     });
 
-    this.client.on('ready', async () => {
+    this.client.on('ready', () => {
       this.isConnected = true;
       this.isInitializing = false;
       this.logger.log('✅✅✅ READY! הבוט מחובר ופעיל.');
     });
 
-    try {
-      await this.client.initialize();
-    } catch (err: any) {
-      this.logger.error(`❌ שגיאה באתחול ה-Client: ${err.message}`);
-      this.isInitializing = false;
+    this.client.on('disconnected', (reason) => {
+      this.logger.warn(`🔌 הבוט נותק: ${reason}`);
       this.handleRestart();
+    });
+  }
+
+  /**
+   * ניקוי רקורסיבי של קבצי SingletonLock שמונעים מהקליינט לעלות ב-Docker/Volumes
+   */
+  private cleanupLockFiles(): void {
+    try {
+      const authPath = join(process.cwd(), '.wwebjs_auth');
+      if (!existsSync(authPath)) return;
+
+      this.logger.warn('🧹 סורק ומנקה קבצי Lock מה-Volume...');
+
+      const cleanLocks = (dir: string) => {
+        const items = readdirSync(dir);
+        for (const item of items) {
+          const fullPath = join(dir, item);
+          if (lstatSync(fullPath).isDirectory()) {
+            cleanLocks(fullPath);
+          } else if (item === 'SingletonLock') {
+            rmSync(fullPath, { force: true });
+            this.logger.log(`🗑️ הוסר בהצלחה: ${fullPath}`);
+          }
+        }
+      };
+
+      cleanLocks(authPath);
+    } catch (err) {
+      const error = err as Error;
+      this.logger.error(`⚠️ תקלה במהלך ניקוי קבצי Lock: ${error.message}`);
     }
   }
 
   async sendMessage(to: string, body: string): Promise<void> {
-    if (!this.isConnected) return;
+    if (!this.isConnected) {
+      this.logger.warn(`Tried to send message but not connected to: ${to}`);
+      return;
+    }
     try {
       await this.client.sendMessage(to, body);
-    } catch (e: any) {
-      this.logger.error(`❌ שגיאה בשליחת הודעה: ${e.message}`);
-      if (e.message.includes('detached') || e.message.includes('closed')) {
-        this.handleRestart();
-      }
+    } catch (err) {
+      const error = err as Error;
+      this.logger.error(`❌ שגיאה בשליחת הודעה: ${error.message}`);
+      this.checkConnectionState(error.message);
     }
   }
 
@@ -127,13 +146,14 @@ export class WhatsappService implements OnModuleInit {
 
       if (existsSync(imagePath)) {
         const media = MessageMedia.fromFilePath(imagePath);
-        // השהייה קלה למניעת זיהוי כבוט ספאמר
+
+        // השהייה קלה למניעת זיהוי כבוט ספאמר (אנטי-באן)
         await new Promise((resolve) => setTimeout(resolve, 3500));
         await this.client.sendMessage(groupId, media, { caption });
 
         await this.sendMessage(
           CONFIG.OWNER_NUMBER,
-          `✅ הודעת יום ${dayNumber} הופצה בהצלחה.`,
+          `✅ הודעת יום ${dayNumber} הופצה בהצלחה ל- ${groupId}`,
         );
       } else {
         await this.client.sendMessage(groupId, caption);
@@ -142,11 +162,20 @@ export class WhatsappService implements OnModuleInit {
           `⚠️ נשלח טקסט בלבד (תמונה ${dayNumber}.jpg חסרה).`,
         );
       }
-    } catch (e: any) {
-      this.logger.error(`❌ שגיאה בהפצת העומר: ${e.message}`);
-      if (e.message.includes('detached') || e.message.includes('closed')) {
-        this.handleRestart();
-      }
+    } catch (err) {
+      const error = err as Error;
+      this.logger.error(`❌ שגיאה בהפצת העומר: ${error.message}`);
+      this.checkConnectionState(error.message);
+    }
+  }
+
+  private checkConnectionState(errorMessage: string): void {
+    if (
+      errorMessage.includes('detached') ||
+      errorMessage.includes('closed') ||
+      errorMessage.includes('Session closed')
+    ) {
+      this.handleRestart();
     }
   }
 
@@ -158,8 +187,9 @@ export class WhatsappService implements OnModuleInit {
 
     try {
       await this.client.destroy();
-    } catch (e: any) {
-      this.logger.error(`שגיאה בסגירת הקליינט: ${e.message}`);
+    } catch (err) {
+      const error = err as Error;
+      this.logger.error(`שגיאה בסגירת הקליינט: ${error.message}`);
     }
 
     setTimeout(() => this.initializeClient(), 20000);
