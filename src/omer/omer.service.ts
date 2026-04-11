@@ -22,7 +22,7 @@ export class OmerService {
         `Sunset: ${sunsetIso} | Chabad Target: ${chabadZman.toISOString()}`,
       );
       return chabadZman.toISOString();
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Hebcal Zmanim Error: ${e.message}`);
       return null;
     }
@@ -60,7 +60,7 @@ export class OmerService {
         day: dayNumber,
         hebrew: item.hebrew,
       };
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Omer Data Fetch Error: ${e.message}`);
       return null;
     }
