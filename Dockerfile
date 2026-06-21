@@ -1,4 +1,4 @@
-FROM node:20
+FROM node:20-bookworm
 
 RUN apt-get update && apt-get install -y \
     lsb-release \
@@ -18,7 +18,7 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm ci
 RUN npx puppeteer browsers install chrome
 
 COPY . .
