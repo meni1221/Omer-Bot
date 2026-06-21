@@ -7,6 +7,7 @@ import { OmerModule } from './omer/omer.module';
 import { CommonModule } from './common/common.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { MizmorModule } from './mizmor/mizmor.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AppService } from './app.service';
     CommonModule,
     WhatsappModule,
     OmerModule,
+    MizmorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

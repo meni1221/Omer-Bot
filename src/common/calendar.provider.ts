@@ -1,7 +1,10 @@
 // src/common/calendar.provider.ts
 import { Injectable } from '@nestjs/common';
 import { HOLIDAY_EVES_2026 } from '../constants/calendar';
-import { CalendarStatus, DayType } from 'src/interfaces/calendar-status.interface';
+import {
+  CalendarStatus,
+  DayType,
+} from 'src/interfaces/calendar-status.interface';
 
 @Injectable()
 export class CalendarProvider {

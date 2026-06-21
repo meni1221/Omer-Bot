@@ -1,100 +1,37 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { OmerService } from './omer.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { CalendarProvider } from '../common/calendar.provider';
 import { StateService } from '../common/state.service';
-import { GROUPS } from 'src/constants/groups';
-import { MESSAGES } from 'src/constants/messages';
-import { CONFIG } from 'src/config/bot.config';
+import { CONFIG } from '../config/bot.config';
+import { OmerDistributionService } from './omer-distribution.service';
+import { OmerReportService } from './omer-report.service';
+import { OmerService } from './omer.service';
 
 @Injectable()
 export class OmerSchedulerService implements OnModuleInit {
-  private readonly logger = new Logger('OmerScheduler');
+  private readonly logger = new Logger(OmerSchedulerService.name);
   private targetTime: string | null = null;
-  private startupTime: number = 0;
-  private isProcessing = false;
+  private startupTime = 0;
 
   constructor(
     private readonly omerService: OmerService,
-    private readonly whatsappService: WhatsappService,
     private readonly calendar: CalendarProvider,
     private readonly state: StateService,
+    private readonly distribution: OmerDistributionService,
+    private readonly reports: OmerReportService,
   ) {}
 
-  async onModuleInit() {
+  async onModuleInit(): Promise<void> {
     this.startupTime = Date.now();
-    this.logger.log('🚀 Omer Scheduler Initialized (Production Mode)');
+    this.logger.log('Omer scheduler initialized');
 
     await this.refreshZmanim();
     await this.runStartupGuard();
-
-    // מפעיל את תהליך ה-Preview (רץ ברקע באופן אסינכרוני)
-    this.runStartupPreview();
-  }
-
-  /**
-   * בדיקה בעליית השרת: אם עברנו את שעת היעד, נסמן את היום כנשלח כדי למנוע כפילויות
-   */
-  private async runStartupGuard() {
-    const currentTime = this.calendar.getIsraelTime();
-    const status = this.calendar.getCurrentStatus(this.targetTime || undefined);
-    const effectiveTarget = status.isEarlyDay
-      ? CONFIG.EARLY_SEND_TIME
-      : this.targetTime;
-
-    if (effectiveTarget && currentTime >= effectiveTarget) {
-      await this.state.setLastSentDay(new Date().getDate());
-      this.logger.log(
-        `🛡️ Startup Guard: Past target (${effectiveTarget}). Marked as SENT.`,
-      );
-    }
-  }
-
-  /**
-   * שליחת הודעת בדיקה למנהל כשהבוט מתחבר
-   */
-  private async runStartupPreview() {
-    try {
-      this.logger.log('⏳ Startup Preview: Waiting for WhatsApp stability...');
-      let attempts = 0;
-      while (!this.whatsappService.isClientReady() && attempts < 60) {
-        await new Promise((res) => setTimeout(res, 1000));
-        attempts++;
-      }
-
-      if (!this.whatsappService.isClientReady()) return;
-
-      const data = await this.omerService.getOmerData();
-      if (!data || !data.day) {
-        this.logger.warn('Could not send startup preview: Omer data missing');
-        return;
-      }
-
-      const lastSent = await this.state.getLastSentDay();
-      const statusText =
-        lastSent === new Date().getDate() ? '✅ נשלח/חסום' : '⏳ ממתין';
-
-      const previewMessage =
-        `🔄 *בדיקת מערכת - הבוט עלה*\n` +
-        `יום מזוהה: *${data.day}*\n` +
-        `יעד שליחה: ${this.targetTime || 'בחישוב...'}\n` +
-        `סטטוס הפצה: ${statusText}\n` +
-        `סוג בדיקה: *התנעה (Startup)* 🚀`;
-
-      await this.whatsappService.sendOmerMessage(
-        CONFIG.OWNER_NUMBER,
-        data.day,
-        previewMessage,
-      );
-    } catch (e) {
-      const error = e as Error;
-      this.logger.error(`Failed startup preview: ${error.message}`);
-    }
+    void this.reports.sendStartupPreview(this.targetTime);
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
-  async handleEveryMinute() {
+  async handleEveryMinute(): Promise<void> {
     const status = this.calendar.getCurrentStatus(this.targetTime || undefined);
     const currentTime = this.calendar.getIsraelTime();
 
@@ -107,138 +44,72 @@ export class OmerSchedulerService implements OnModuleInit {
       ? CONFIG.EARLY_SEND_TIME
       : this.targetTime;
 
-    // הרצת הדיווחים (Heartbeat ודיווח שעתי)
-    await this.executeReports(currentTime, status.dayTypeLabel, displayTarget);
-
-    if (this.isProcessing) return;
-
-    // 1. טיפול בימים מוקדמים (ערבי שבת וחג)
-    if (status.isEarlyDay) {
-      if (currentTime === CONFIG.EARLY_SEND_TIME) {
-        await this.handleEarlyDistribution(status.dayType);
-      }
-      return;
-    }
-
-    // 2. הגנה בתוך השבת ומוצ"ש
-    if (status.isShabbat && !status.isMotzaeiShabbat) return;
-    if (
-      status.dayType === 'SHABBAT_EVE' &&
-      currentTime > CONFIG.SHABBAT_PROTECTION_TIME
-    )
-      return;
-
-    // 3. שליחה רגילה (ימי חול ומוצאי שבת)
-    if (currentTime === this.targetTime) {
-      await this.handleDistribution();
-    }
-  }
-
-  private async executeReports(
-    currentTime: string,
-    dayLabel: string,
-    target: string,
-  ) {
-    const now = new Date();
-    if (now.getSeconds() !== 0) return;
-
-    this.logger.debug(
-      `[Heartbeat] ${currentTime} | ${dayLabel} | Target: ${target}`,
+    await this.reports.executeMinuteReports(
+      currentTime,
+      status.dayTypeLabel,
+      displayTarget,
+      this.startupTime,
     );
 
-    const minsActive = Math.floor((Date.now() - this.startupTime) / 60000);
+    if (this.distribution.isBusy()) return;
 
-    // דיווח התנעה למנהל בדקות הראשונות
-    if (minsActive <= CONFIG.STARTUP_PULSE_MINUTES) {
-      await this.whatsappService
-        .sendMessage(
-          CONFIG.OWNER_NUMBER,
-          MESSAGES.STARTUP_REPORT(
-            minsActive,
-            CONFIG.STARTUP_PULSE_MINUTES,
-            dayLabel,
-            target,
-          ),
-        )
-        .catch(() => {});
+    if (status.isEarlyDay) {
+      if (currentTime === CONFIG.EARLY_SEND_TIME) {
+        await this.distribution.distributeForEarlyDay(status.dayType);
+      }
+      return;
     }
 
-    // דיווח שעתי כולל בדיקת מדיה
-    if (now.getMinutes() === 0) {
-      try {
-        const data = await this.omerService.getOmerData();
-        const lastSent = await this.state.getLastSentDay();
-        const statusText = lastSent === now.getDate() ? '✅ נשלח' : '⏳ ממתין';
+    if (this.shouldSkipRegularDistribution(status, currentTime)) return;
 
-        await this.whatsappService.sendOmerMessage(
-          CONFIG.OWNER_NUMBER,
-          data?.day ?? '...',
-          MESSAGES.HOURLY_REPORT(dayLabel, target, statusText),
-        );
-      } catch (e) {
-        const error = e as Error;
-        this.logger.error(`Failed hourly report: ${error.message}`);
-      }
+    if (currentTime === this.targetTime) {
+      await this.distribution.distribute();
     }
   }
 
-  private async handleEarlyDistribution(type: string) {
-    const lastSent = await this.state.getLastSentDay();
-    if (lastSent === new Date().getDate()) return;
+  private async runStartupGuard(): Promise<void> {
+    const currentTime = this.calendar.getIsraelTime();
+    const status = this.calendar.getCurrentStatus(this.targetTime || undefined);
+    const effectiveTarget = status.isEarlyDay
+      ? CONFIG.EARLY_SEND_TIME
+      : this.targetTime;
 
-    const greeting =
-      type === 'SHABBAT_EVE'
-        ? MESSAGES.GREETINGS.SHABBAT
-        : MESSAGES.GREETINGS.HOLIDAY;
-    const prefix = `${MESSAGES.GREETINGS.EARLY_PREFIX} ${greeting}${MESSAGES.GREETINGS.HALACHIC_WARNING}`;
-    await this.handleDistribution(prefix);
-  }
-
-  private async handleDistribution(prefix: string = '') {
-    const lastSent = await this.state.getLastSentDay();
-    if (lastSent === new Date().getDate()) return;
-
-    this.isProcessing = true;
-    try {
-      const data = await this.omerService.getOmerData();
-      if (!data || !data.day) {
-        this.logger.error('Distribution aborted: Omer data is null');
-        return;
-      }
-
-      const caption = MESSAGES.GET_FULL_CAPTION(prefix);
-
-      for (const groupId of GROUPS) {
-        await this.whatsappService.sendOmerMessage(groupId, data.day, caption);
-        // השהיה קלה בין קבוצות למניעת חסימות
-        await new Promise((res) => setTimeout(res, 3000));
-      }
-
+    if (effectiveTarget && currentTime >= effectiveTarget) {
       await this.state.setLastSentDay(new Date().getDate());
-      this.logger.log(`✅ Distribution completed for day ${data.day}`);
-    } catch (e) {
-      const error = e as Error;
-      this.logger.error(`❌ Distribution failed: ${error.message}`);
-    } finally {
-      this.isProcessing = false;
+      this.logger.log(
+        `Startup guard marked today as sent. Target already passed: ${effectiveTarget}`,
+      );
     }
   }
 
-  private async refreshZmanim() {
+  private shouldSkipRegularDistribution(
+    status: ReturnType<CalendarProvider['getCurrentStatus']>,
+    currentTime: string,
+  ): boolean {
+    if (status.isShabbat && !status.isMotzaeiShabbat) return true;
+
+    return (
+      status.dayType === 'SHABBAT_EVE' &&
+      currentTime > CONFIG.SHABBAT_PROTECTION_TIME
+    );
+  }
+
+  private async refreshZmanim(): Promise<void> {
     try {
       const zmanIso = await this.omerService.getZmanim();
-      if (zmanIso) {
-        this.targetTime = new Date(zmanIso).toLocaleTimeString('he-IL', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-          timeZone: 'Asia/Jerusalem',
-        });
-        this.logger.log(`📍 Target time refreshed: ${this.targetTime}`);
-      }
-    } catch (e) {
-      const error = e as Error;
-      this.logger.error(`Failed to refresh zmanim: ${error.message}`);
+      if (!zmanIso) return;
+
+      this.targetTime = new Date(zmanIso).toLocaleTimeString('he-IL', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Jerusalem',
+      });
+      this.logger.log(`Target time refreshed: ${this.targetTime}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to refresh zmanim: ${(error as Error).message}`,
+      );
     }
   }
 }
